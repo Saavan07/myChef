@@ -5,6 +5,12 @@ const app = express();
 const port = process.env.PORT || 3000;
 const host = process.env.HOST || "127.0.0.1";
 const publicDir = path.join(__dirname, "public");
+const backendUrl = process.env.BACKEND_URL || "http://127.0.0.1:8000";
+
+app.get("/app-config.js", (_req, res) => {
+  res.type("application/javascript");
+  res.send(`window.__APP_CONFIG__ = ${JSON.stringify({ backendUrl })};`);
+});
 
 app.use(express.static(publicDir));
 
@@ -13,5 +19,5 @@ app.get("*", (_req, res) => {
 });
 
 app.listen(port, host, () => {
-  console.log(`Meal planner frontend available at http://${host}:${port}`);
+  console.log(`MyChef frontend available at http://${host}:${port}`);
 });
