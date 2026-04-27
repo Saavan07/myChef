@@ -1,0 +1,20 @@
+{
+  "name": "team-26-meal-planner",
+  "version": "1.0.0",
+  "description": "Node.js frontend for a grocery-aware meal planning app.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "node",
+    "express",
+    "meal-planner",
+    "frontend"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
