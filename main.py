@@ -1,135 +1,33 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 import uuid
 import random
 
+from firebase_service import (
+    get_db,
+    user_ref,
+    recipe_ref,
+    users_col,
+    recipes_col,
+    seed_recipes_if_empty,
+)
+
 app = FastAPI()
 
-users_db = {}
-recipes_db = {
-    "r1": {
-        "id": "r1",
-        "name": "Pasta",
-        "ingredients": ["pasta", "tomato sauce", "garlic"],
-        "steps": [
-            {"instruction": "Fill a large pot with water and bring to a boil over high heat.", "tip": "Salt the water generously — it should taste like the sea. This is your only chance to season the pasta itself."},
-            {"instruction": "Add pasta and cook according to package directions (usually 8-10 min).", "tip": "Stir in the first minute to prevent sticking. Taste a piece 1 min before the timer goes off — it should be tender but still have a tiny bit of bite (al dente)."},
-            {"instruction": "Drain pasta, then add tomato sauce and minced garlic to the pot.", "tip": "Save a splash of the pasta water before draining — adding a little to the sauce helps it cling to the noodles."},
-        ],
-        "dietary_tags": ["vegetarian"],
-        "meal_type": "dinner",
-        "prep_time_minutes": 20,
-    },
-    "r2": {
-        "id": "r2",
-        "name": "Grilled Chicken",
-        "ingredients": ["chicken breast", "olive oil", "salt", "pepper"],
-        "steps": [
-            {"instruction": "Pat chicken dry with paper towels, then coat with olive oil, salt, and pepper.", "tip": "Drying the chicken first helps it actually sear instead of steam. Don't skip this."},
-            {"instruction": "Heat a pan or grill over medium-high heat until hot.", "tip": "You can tell it's ready by holding your hand 3 inches above the surface — you should only be able to hold it there for about 2 seconds."},
-            {"instruction": "Cook 6 minutes per side without moving it around.", "tip": "Resist the urge to poke or flip early. The chicken will release from the pan naturally when it's ready. If it's sticking, it needs more time."},
-            {"instruction": "Let rest for 5 minutes before cutting.", "tip": "Resting lets the juices redistribute. Cut too early and they all run out onto the cutting board."},
-        ],
-        "dietary_tags": ["gluten-free"],
-        "meal_type": "dinner",
-        "prep_time_minutes": 25,
-    },
-    "r3": {
-        "id": "r3",
-        "name": "Caesar Salad",
-        "ingredients": ["romaine lettuce", "croutons", "parmesan", "caesar dressing"],
-        "steps": [
-            {"instruction": "Chop romaine into bite-sized pieces and wash in cold water, then spin or pat dry.", "tip": "Wet lettuce = watery salad. Dressing won't stick to wet leaves, so drying is worth the extra step."},
-            {"instruction": "Add croutons and shaved or grated parmesan on top.", "tip": "For extra flavor, rub the bowl with a cut garlic clove before adding the lettuce."},
-            {"instruction": "Drizzle dressing and toss to coat evenly.", "tip": "Add less dressing than you think you need, toss, then taste. You can always add more but you can't take it away."},
-        ],
-        "dietary_tags": ["vegetarian"],
-        "meal_type": "lunch",
-        "prep_time_minutes": 10,
-    },
-    "r4": {
-        "id": "r4",
-        "name": "Stir Fry",
-        "ingredients": ["rice", "soy sauce", "broccoli", "carrots", "tofu"],
-        "steps": [
-            {"instruction": "Cook rice according to package directions.", "tip": "For better texture, rinse the rice under cold water until it runs clear before cooking — removes excess starch."},
-            {"instruction": "Cube tofu and pat it very dry, then cook in a hot oiled pan until golden on each side.", "tip": "Tofu browns best when it's dry and the pan is properly hot. Don't crowd the pan or it'll steam instead of crisp."},
-            {"instruction": "Add broccoli and carrots to the same pan and stir fry for 4-5 minutes.", "tip": "Keep things moving! Stir frying is meant to be fast and hot. If you walk away, things will burn."},
-            {"instruction": "Add soy sauce, toss everything together, and serve over rice.", "tip": "Add the soy sauce around the edge of the pan, not directly on the food — it hits the hot surface first and caramelizes slightly."},
-        ],
-        "dietary_tags": ["vegetarian", "vegan"],
-        "meal_type": "dinner",
-        "prep_time_minutes": 30,
-    },
-    "r5": {
-        "id": "r5",
-        "name": "Tacos",
-        "ingredients": ["ground beef", "taco shells", "cheese", "lettuce", "salsa"],
-        "steps": [
-            {"instruction": "Cook ground beef in a pan over medium-high heat, breaking it apart as it cooks.", "tip": "Don't stir constantly — let it sit for 30 seconds at a time so it actually browns instead of steaming in its own liquid."},
-            {"instruction": "Drain excess fat from the pan.", "tip": "Tip the pan and use a spoon to push the fat to one side, then soak it up with paper towels. Leaving too much fat makes soggy tacos."},
-            {"instruction": "Warm taco shells in oven at 350°F for 3-4 minutes.", "tip": "Warming them makes a huge difference in texture. Cold hard shells crack and fall apart immediately."},
-            {"instruction": "Assemble tacos with beef, cheese, lettuce, and salsa.", "tip": "Put the cheese on the hot meat first so it melts a little — way better than cold cheese on top."},
-        ],
-        "dietary_tags": [],
-        "meal_type": "dinner",
-        "prep_time_minutes": 25,
-    },
-    "r6": {
-        "id": "r6",
-        "name": "Scrambled Eggs",
-        "ingredients": ["eggs", "butter", "salt", "pepper", "milk"],
-        "steps": [
-            {"instruction": "Crack eggs into a bowl, add a splash of milk, salt and pepper, and whisk until combined.", "tip": "Don't over-whisk — you just want the yolks and whites combined. Too much air makes them rubbery."},
-            {"instruction": "Melt butter in a nonstick pan over low heat.", "tip": "Low and slow is the secret. High heat makes eggs tough and watery."},
-            {"instruction": "Pour in egg mixture and gently fold with a spatula as they set.", "tip": "Pull the pan off heat while they still look slightly underdone — carry-over heat finishes them perfectly."},
-        ],
-        "dietary_tags": ["vegetarian", "gluten-free"],
-        "meal_type": "breakfast",
-        "prep_time_minutes": 10,
-    },
-    "r7": {
-        "id": "r7",
-        "name": "Oatmeal",
-        "ingredients": ["oats", "milk", "banana", "honey"],
-        "steps": [
-            {"instruction": "Combine oats and milk in a pot over medium heat.", "tip": "Use milk instead of water for way creamier oatmeal. Totally worth it."},
-            {"instruction": "Stir occasionally for 5 minutes until thick and creamy.", "tip": "Don't walk away — it can bubble up and make a mess fast."},
-            {"instruction": "Top with sliced banana and a drizzle of honey.", "tip": "Add the banana at the end so it stays fresh and doesn't get mushy."},
-        ],
-        "dietary_tags": ["vegetarian", "vegan"],
-        "meal_type": "breakfast",
-        "prep_time_minutes": 10,
-    },
-    "r8": {
-        "id": "r8",
-        "name": "Turkey Sandwich",
-        "ingredients": ["turkey", "bread", "lettuce", "tomato", "mustard"],
-        "steps": [
-            {"instruction": "Lay out two slices of bread and spread mustard on one side.", "tip": "Mustard on one slice, nothing on the other — this keeps the bread from getting soggy."},
-            {"instruction": "Layer turkey, lettuce, and tomato.", "tip": "Put the lettuce between the turkey and tomato so the tomato moisture doesn't hit the bread directly."},
-            {"instruction": "Press together and slice diagonally.", "tip": "Cutting diagonally isn't just aesthetic — it actually makes it easier to eat and gives you more surface area per bite."},
-        ],
-        "dietary_tags": [],
-        "meal_type": "lunch",
-        "prep_time_minutes": 5,
-    },
-    "r9": {
-        "id": "r9",
-        "name": "Veggie Wrap",
-        "ingredients": ["tortilla", "hummus", "cucumber", "bell pepper", "spinach"],
-        "steps": [
-            {"instruction": "Spread a generous layer of hummus across the center of the tortilla.", "tip": "Leave about an inch on the edges so it doesn't squeeze out when you roll it."},
-            {"instruction": "Layer spinach, sliced cucumber, and bell pepper strips on top.", "tip": "Put the heavier vegetables in the center so the wrap holds its shape better."},
-            {"instruction": "Roll tightly, tucking in the sides as you go, then slice in half.", "tip": "Wrap in foil if you're taking it to go — it holds the shape way better than plastic wrap."},
-        ],
-        "dietary_tags": ["vegetarian", "vegan"],
-        "meal_type": "lunch",
-        "prep_time_minutes": 10,
-    },
-}
 
+@app.on_event("startup")
+def startup_event():
+    """Seed the recipes collection on first run."""
+    seed_recipes_if_empty()
+
+
+# ---------------------------------------------------------------------------
+# Models (unchanged)
+# ---------------------------------------------------------------------------
 
 class UserCreate(BaseModel):
     username: str
@@ -153,127 +51,38 @@ class SwapMeal(BaseModel):
     new_recipe_id: str
 
 
-@app.post("/register")
-def register(user: UserCreate):
-    for u in users_db.values():
-        if u["username"] == user.username:
-            raise HTTPException(status_code=400, detail="username already taken")
-    
-    user_id = str(uuid.uuid4())
-    users_db[user_id] = {
-        "id": user_id,
-        "username": user.username,
-        "password": user.password,
-        "dietary_preferences": user.dietary_preferences,
-        "dietary_restrictions": user.dietary_restrictions,
-        "pantry": [],
-        "favorites": [],
-        "meal_plans": [],
-        "meal_history": []
-    }
-    return {"message": "user created", "user_id": user_id}
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 
-
-@app.post("/login")
-def login(user: UserLogin):
-    for u in users_db.values():
-        if u["username"] == user.username and u["password"] == user.password:
-            return {"message": "login successful", "user_id": u["id"]}
-    raise HTTPException(status_code=401, detail="invalid credentials")
-
-
-@app.get("/users/{user_id}/preferences")
-def get_preferences(user_id: str):
-    if user_id not in users_db:
+def _get_user_or_404(user_id: str) -> dict:
+    doc = user_ref(user_id).get()
+    if not doc.exists:
         raise HTTPException(status_code=404, detail="user not found")
-    return {
-        "dietary_preferences": users_db[user_id]["dietary_preferences"],
-        "dietary_restrictions": users_db[user_id].get("dietary_restrictions", [])
-    }
+    return doc.to_dict()
 
 
-@app.post("/users/{user_id}/preferences")
-def update_preferences(user_id: str, prefs: PreferencesUpdate):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
-    users_db[user_id]["dietary_preferences"] = prefs.dietary_preferences
-    users_db[user_id]["dietary_restrictions"] = prefs.dietary_restrictions or []
-    return {"message": "preferences updated"}
-
-
-@app.get("/users/{user_id}/pantry")
-def get_pantry(user_id: str):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
-    return {"pantry": users_db[user_id].get("pantry", [])}
-
-
-@app.post("/users/{user_id}/pantry")
-def update_pantry(user_id: str, pantry: PantryUpdate):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
-    users_db[user_id]["pantry"] = pantry.items
-    return {"message": "pantry updated", "pantry": pantry.items}
-
-
-@app.delete("/users/{user_id}/pantry/{item}")
-def remove_from_pantry(user_id: str, item: str):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
-    pantry = users_db[user_id].get("pantry", [])
-    if item not in pantry:
-        raise HTTPException(status_code=404, detail="item not in pantry")
-    pantry.remove(item)
-    users_db[user_id]["pantry"] = pantry
-    return {"message": f"removed {item} from pantry"}
-
-
-@app.get("/recipes")
-def get_recipes(tag: Optional[str] = None):
-    results = list(recipes_db.values())
-    if tag:
-        results = [r for r in results if tag in r["dietary_tags"]]
-    return results
-
-
-@app.get("/recipes/{recipe_id}")
-def get_recipe(recipe_id: str):
-    if recipe_id not in recipes_db:
+def _get_recipe_or_404(recipe_id: str) -> dict:
+    doc = recipe_ref(recipe_id).get()
+    if not doc.exists:
         raise HTTPException(status_code=404, detail="recipe not found")
-    return recipes_db[recipe_id]
+    return doc.to_dict()
 
 
-@app.get("/users/{user_id}/favorites")
-def get_favorites(user_id: str):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
-    favorite_ids = users_db[user_id]["favorites"]
-    return [recipes_db[rid] for rid in favorite_ids if rid in recipes_db]
+def _find_user_by_username(username: str) -> Optional[dict]:
+    results = users_col().where("username", "==", username).limit(1).stream()
+    for doc in results:
+        return doc.to_dict()
+    return None
 
 
-@app.post("/users/{user_id}/favorites/{recipe_id}")
-def add_favorite(user_id: str, recipe_id: str):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
-    if recipe_id not in recipes_db:
-        raise HTTPException(status_code=404, detail="recipe not found")
-    favorites = users_db[user_id]["favorites"]
-    if recipe_id in favorites:
-        return {"message": "already in favorites"}
-    favorites.append(recipe_id)
-    return {"message": "added to favorites"}
+def _all_recipes() -> list[dict]:
+    return [doc.to_dict() for doc in recipes_col().stream()]
 
 
-@app.delete("/users/{user_id}/favorites/{recipe_id}")
-def remove_favorite(user_id: str, recipe_id: str):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
-    favorites = users_db[user_id]["favorites"]
-    if recipe_id not in favorites:
-        raise HTTPException(status_code=404, detail="recipe not in favorites")
-    favorites.remove(recipe_id)
-    return {"message": "removed from favorites"}
-
+# ---------------------------------------------------------------------------
+# Recommendation engine (logic unchanged, now reads from Firestore)
+# ---------------------------------------------------------------------------
 
 def passes_restrictions(recipe, restrictions):
     restricted_ingredients = [r.lower().strip() for r in restrictions]
@@ -333,16 +142,158 @@ def pick_recipe_for_slot(candidates, meal_type, user, recently_used_ids, current
     return chosen
 
 
+# ---------------------------------------------------------------------------
+# Auth endpoints
+# ---------------------------------------------------------------------------
+
+@app.post("/register")
+def register(user: UserCreate):
+    if _find_user_by_username(user.username):
+        raise HTTPException(status_code=400, detail="username already taken")
+
+    user_id = str(uuid.uuid4())
+    user_data = {
+        "id": user_id,
+        "username": user.username,
+        "password": user.password,  # TODO: hash with bcrypt before launch
+        "dietary_preferences": user.dietary_preferences,
+        "dietary_restrictions": user.dietary_restrictions,
+        "pantry": [],
+        "favorites": [],
+        "meal_plans": [],
+        "meal_history": [],
+    }
+    user_ref(user_id).set(user_data)
+    return {"message": "user created", "user_id": user_id}
+
+
+@app.post("/login")
+def login(user: UserLogin):
+    existing = _find_user_by_username(user.username)
+    if existing and existing["password"] == user.password:
+        # TODO: return a signed JWT here
+        return {"message": "login successful", "user_id": existing["id"]}
+    raise HTTPException(status_code=401, detail="invalid credentials")
+
+
+# ---------------------------------------------------------------------------
+# User preferences
+# ---------------------------------------------------------------------------
+
+@app.get("/users/{user_id}/preferences")
+def get_preferences(user_id: str):
+    user = _get_user_or_404(user_id)
+    return {
+        "dietary_preferences": user["dietary_preferences"],
+        "dietary_restrictions": user.get("dietary_restrictions", []),
+    }
+
+
+@app.post("/users/{user_id}/preferences")
+def update_preferences(user_id: str, prefs: PreferencesUpdate):
+    _get_user_or_404(user_id)
+    user_ref(user_id).update({
+        "dietary_preferences": prefs.dietary_preferences,
+        "dietary_restrictions": prefs.dietary_restrictions or [],
+    })
+    return {"message": "preferences updated"}
+
+
+# ---------------------------------------------------------------------------
+# Pantry
+# ---------------------------------------------------------------------------
+
+@app.get("/users/{user_id}/pantry")
+def get_pantry(user_id: str):
+    user = _get_user_or_404(user_id)
+    return {"pantry": user.get("pantry", [])}
+
+
+@app.post("/users/{user_id}/pantry")
+def update_pantry(user_id: str, pantry: PantryUpdate):
+    _get_user_or_404(user_id)
+    user_ref(user_id).update({"pantry": pantry.items})
+    return {"message": "pantry updated", "pantry": pantry.items}
+
+
+@app.delete("/users/{user_id}/pantry/{item}")
+def remove_from_pantry(user_id: str, item: str):
+    user = _get_user_or_404(user_id)
+    pantry = user.get("pantry", [])
+    if item not in pantry:
+        raise HTTPException(status_code=404, detail="item not in pantry")
+    pantry.remove(item)
+    user_ref(user_id).update({"pantry": pantry})
+    return {"message": f"removed {item} from pantry"}
+
+
+# ---------------------------------------------------------------------------
+# Recipes
+# ---------------------------------------------------------------------------
+
+@app.get("/recipes")
+def get_recipes(tag: Optional[str] = None):
+    query = recipes_col()
+    if tag:
+        # Firestore array-contains — no extra index needed
+        query = query.where("dietary_tags", "array_contains", tag)
+    return [doc.to_dict() for doc in query.stream()]
+
+
+@app.get("/recipes/{recipe_id}")
+def get_recipe(recipe_id: str):
+    return _get_recipe_or_404(recipe_id)
+
+
+# ---------------------------------------------------------------------------
+# Favorites
+# ---------------------------------------------------------------------------
+
+@app.get("/users/{user_id}/favorites")
+def get_favorites(user_id: str):
+    user = _get_user_or_404(user_id)
+    results = []
+    for rid in user["favorites"]:
+        doc = recipe_ref(rid).get()
+        if doc.exists:
+            results.append(doc.to_dict())
+    return results
+
+
+@app.post("/users/{user_id}/favorites/{recipe_id}")
+def add_favorite(user_id: str, recipe_id: str):
+    user = _get_user_or_404(user_id)
+    _get_recipe_or_404(recipe_id)
+    favorites = user["favorites"]
+    if recipe_id in favorites:
+        return {"message": "already in favorites"}
+    favorites.append(recipe_id)
+    user_ref(user_id).update({"favorites": favorites})
+    return {"message": "added to favorites"}
+
+
+@app.delete("/users/{user_id}/favorites/{recipe_id}")
+def remove_favorite(user_id: str, recipe_id: str):
+    user = _get_user_or_404(user_id)
+    favorites = user["favorites"]
+    if recipe_id not in favorites:
+        raise HTTPException(status_code=404, detail="recipe not in favorites")
+    favorites.remove(recipe_id)
+    user_ref(user_id).update({"favorites": favorites})
+    return {"message": "removed from favorites"}
+
+
+# ---------------------------------------------------------------------------
+# Meal plan generation
+# ---------------------------------------------------------------------------
+
 @app.post("/users/{user_id}/meal-plan/generate")
 def generate_meal_plan(user_id: str):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
-
-    user = users_db[user_id]
+    user = _get_user_or_404(user_id)
     prefs = [p.lower() for p in user["dietary_preferences"]]
     restrictions = user.get("dietary_restrictions", [])
 
-    all_recipes = list(recipes_db.values())
+    all_recipes = _all_recipes()
 
     filtered = []
     for r in all_recipes:
@@ -356,15 +307,10 @@ def generate_meal_plan(user_id: str):
 
     if not filtered:
         filtered = [r for r in all_recipes if passes_restrictions(r, restrictions)]
-
     if not filtered:
         filtered = all_recipes
 
-    meal_slots = [
-        "breakfast", "lunch", "dinner",
-        "breakfast", "lunch", "dinner",
-        "dinner"
-    ]
+    meal_slots = ["breakfast", "lunch", "dinner", "breakfast", "lunch", "dinner", "dinner"]
 
     plan_ids = []
     recently_used = []
@@ -374,65 +320,84 @@ def generate_meal_plan(user_id: str):
         plan_ids.append(chosen["id"])
         recently_used.append(chosen["id"])
 
-    user["meal_history"].extend(plan_ids)
+    # Persist updated meal_history and the new plan atomically
+    updated_history = user.get("meal_history", []) + plan_ids
+    meal_plan = {"id": str(uuid.uuid4()), "recipe_ids": plan_ids}
+    updated_plans = user.get("meal_plans", []) + [meal_plan]
 
-    meal_plan = {
-        "id": str(uuid.uuid4()),
-        "recipe_ids": plan_ids
-    }
-    user["meal_plans"].append(meal_plan)
+    user_ref(user_id).update({
+        "meal_history": updated_history,
+        "meal_plans": updated_plans,
+    })
+
     return meal_plan
 
 
 @app.get("/users/{user_id}/meal-plans")
 def get_meal_plans(user_id: str):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
-    return users_db[user_id]["meal_plans"]
+    user = _get_user_or_404(user_id)
+    return user.get("meal_plans", [])
 
+
+# ---------------------------------------------------------------------------
+# Manual swap
+# ---------------------------------------------------------------------------
 
 @app.post("/users/{user_id}/meal-plans/{plan_id}/swap")
 def swap_meal(user_id: str, plan_id: str, swap: SwapMeal):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
-    if swap.new_recipe_id not in recipes_db:
-        raise HTTPException(status_code=404, detail="recipe not found")
+    user = _get_user_or_404(user_id)
+    _get_recipe_or_404(swap.new_recipe_id)
+
     if swap.day_index < 0 or swap.day_index > 6:
         raise HTTPException(status_code=400, detail="day_index must be 0-6")
 
-    user = users_db[user_id]
-    plan = next((p for p in user["meal_plans"] if p["id"] == plan_id), None)
+    meal_plans = user.get("meal_plans", [])
+    plan = next((p for p in meal_plans if p["id"] == plan_id), None)
     if not plan:
         raise HTTPException(status_code=404, detail="meal plan not found")
 
     old_recipe_id = plan["recipe_ids"][swap.day_index]
     plan["recipe_ids"][swap.day_index] = swap.new_recipe_id
+
+    user_ref(user_id).update({"meal_plans": meal_plans})
+
     return {
         "message": "meal swapped",
         "day": swap.day_index,
         "old_recipe": old_recipe_id,
-        "new_recipe": swap.new_recipe_id
+        "new_recipe": swap.new_recipe_id,
     }
 
 
+# ---------------------------------------------------------------------------
+# Auto swap
+# ---------------------------------------------------------------------------
+
 @app.post("/users/{user_id}/meal-plans/{plan_id}/swap-auto")
 def swap_meal_auto(user_id: str, plan_id: str, day_index: int):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
+    user = _get_user_or_404(user_id)
+
     if day_index < 0 or day_index > 6:
         raise HTTPException(status_code=400, detail="day_index must be 0-6")
 
-    user = users_db[user_id]
-    plan = next((p for p in user["meal_plans"] if p["id"] == plan_id), None)
+    meal_plans = user.get("meal_plans", [])
+    plan = next((p for p in meal_plans if p["id"] == plan_id), None)
     if not plan:
         raise HTTPException(status_code=404, detail="meal plan not found")
 
     prefs = [p.lower() for p in user["dietary_preferences"]]
     restrictions = user.get("dietary_restrictions", [])
     current_recipe_id = plan["recipe_ids"][day_index]
-    current_meal_type = recipes_db.get(current_recipe_id, {}).get("meal_type", "dinner")
 
-    all_recipes = list(recipes_db.values())
+    # Fetch the current recipe's meal_type from Firestore
+    current_recipe_doc = recipe_ref(current_recipe_id).get()
+    current_meal_type = (
+        current_recipe_doc.to_dict().get("meal_type", "dinner")
+        if current_recipe_doc.exists
+        else "dinner"
+    )
+
+    all_recipes = _all_recipes()
 
     filtered = []
     for r in all_recipes:
@@ -447,7 +412,10 @@ def swap_meal_auto(user_id: str, plan_id: str, day_index: int):
         filtered.append(r)
 
     if not filtered:
-        filtered = [r for r in all_recipes if r["id"] != current_recipe_id and passes_restrictions(r, restrictions)]
+        filtered = [
+            r for r in all_recipes
+            if r["id"] != current_recipe_id and passes_restrictions(r, restrictions)
+        ]
 
     if not filtered:
         raise HTTPException(status_code=400, detail="no other recipes available to swap in")
@@ -455,36 +423,38 @@ def swap_meal_auto(user_id: str, plan_id: str, day_index: int):
     chosen = pick_recipe_for_slot(filtered, current_meal_type, user, plan["recipe_ids"], plan["recipe_ids"])
 
     plan["recipe_ids"][day_index] = chosen["id"]
+    user_ref(user_id).update({"meal_plans": meal_plans})
+
     return {
         "message": "meal swapped",
         "day": day_index,
         "old_recipe": current_recipe_id,
-        "new_recipe": chosen["id"]
+        "new_recipe": chosen["id"],
     }
 
 
+# ---------------------------------------------------------------------------
+# Shopping list
+# ---------------------------------------------------------------------------
+
 @app.get("/users/{user_id}/meal-plans/{plan_id}/shopping-list")
 def get_shopping_list(user_id: str, plan_id: str):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
+    user = _get_user_or_404(user_id)
 
-    user = users_db[user_id]
-    plan = next((p for p in user["meal_plans"] if p["id"] == plan_id), None)
+    plan = next((p for p in user.get("meal_plans", []) if p["id"] == plan_id), None)
     if not plan:
         raise HTTPException(status_code=404, detail="meal plan not found")
 
     all_ingredients = []
     for recipe_id in plan["recipe_ids"]:
-        if recipe_id in recipes_db:
-            all_ingredients.extend(recipes_db[recipe_id]["ingredients"])
+        doc = recipe_ref(recipe_id).get()
+        if doc.exists:
+            all_ingredients.extend(doc.to_dict().get("ingredients", []))
 
     unique_ingredients = list(set(all_ingredients))
-
     pantry = [p.lower() for p in user.get("pantry", [])]
-    need_to_buy = [i for i in unique_ingredients if i.lower() not in pantry]
-    already_have = [i for i in unique_ingredients if i.lower() in pantry]
 
     return {
-        "shopping_list": need_to_buy,
-        "already_have": already_have
+        "shopping_list": [i for i in unique_ingredients if i.lower() not in pantry],
+        "already_have": [i for i in unique_ingredients if i.lower() in pantry],
     }
