@@ -111,6 +111,21 @@
                 Clear week
               </button>
             </div>
+            <form id="manualShoppingForm" class="manual-item-form">
+              <label>
+                Item
+                <input id="manualItemName" type="text" placeholder="Chicken breast" required />
+              </label>
+              <label>
+                Qty
+                <input id="manualItemQuantity" type="number" min="0.25" step="0.25" value="1" required />
+              </label>
+              <label>
+                Unit
+                <input id="manualItemUnit" type="text" placeholder="lb, cup, oz" />
+              </label>
+              <button type="submit">Add item</button>
+            </form>
             <ul id="shoppingList"></ul>
           </div>
         </section>

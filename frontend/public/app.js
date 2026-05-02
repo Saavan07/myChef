@@ -40,7 +40,7 @@ const recipes = [
     time: "25 min",
     calories: "460 cal",
     preferences: ["Vegan", "Gluten-free", "Dairy-free"],
-    ingredients: ["Quinoa", "Tofu", "Carrots", "Spinach", "Orange", "Sesame seeds"],
+    ingredients: ["1 cup Quinoa", "1 block Tofu", "2 Carrots", "2 cups Spinach", "1 Orange", "1 tbsp Sesame seeds"],
     locationAvailability: ["chicago", "austin", "seattle"]
   },
   {
@@ -50,7 +50,7 @@ const recipes = [
     time: "30 min",
     calories: "520 cal",
     preferences: ["Gluten-free", "High protein"],
-    ingredients: ["Salmon", "Baby potatoes", "Lemon", "Green beans", "Parsley"],
+    ingredients: ["2 Salmon fillets", "2 cups Baby potatoes", "1 Lemon", "2 cups Green beans", "1/4 cup Parsley"],
     locationAvailability: ["chicago", "naperville", "seattle"]
   },
   {
@@ -60,7 +60,7 @@ const recipes = [
     time: "35 min",
     calories: "410 cal",
     preferences: ["Vegan", "Low sodium", "Dairy-free"],
-    ingredients: ["Lentils", "Black beans", "Tomatoes", "Corn", "Onion", "Bell pepper"],
+    ingredients: ["1 cup Lentils", "1 can Black beans", "1 can Tomatoes", "1 cup Corn", "1 Onion", "1 Bell pepper"],
     locationAvailability: ["naperville", "austin", "seattle"]
   },
   {
@@ -70,7 +70,7 @@ const recipes = [
     time: "20 min",
     calories: "390 cal",
     preferences: ["Low sodium", "High protein", "Gluten-free"],
-    ingredients: ["Ground turkey", "Butter lettuce", "Water chestnuts", "Carrots", "Scallions"],
+    ingredients: ["1 lb Ground turkey", "1 head Butter lettuce", "1 can Water chestnuts", "2 Carrots", "3 Scallions"],
     locationAvailability: ["chicago", "naperville", "austin"]
   },
   {
@@ -80,7 +80,7 @@ const recipes = [
     time: "28 min",
     calories: "500 cal",
     preferences: ["Vegetarian", "Dairy-free"],
-    ingredients: ["Pasta", "Mushrooms", "Oat cream", "Garlic", "Thyme", "Parmesan alternative"],
+    ingredients: ["8 oz Pasta", "2 cups Mushrooms", "1 cup Oat cream", "2 cloves Garlic", "1 tsp Thyme", "1/4 cup Parmesan alternative"],
     locationAvailability: ["chicago", "austin", "seattle"]
   },
   {
@@ -90,7 +90,7 @@ const recipes = [
     time: "22 min",
     calories: "430 cal",
     preferences: ["Vegan", "Dairy-free"],
-    ingredients: ["Chickpeas", "Corn tortillas", "Cabbage", "Avocado", "Lime", "Cilantro"],
+    ingredients: ["1 can Chickpeas", "8 Corn tortillas", "2 cups Cabbage", "1 Avocado", "1 Lime", "1/4 cup Cilantro"],
     locationAvailability: ["naperville", "austin", "seattle"]
   },
   {
@@ -100,7 +100,7 @@ const recipes = [
     time: "24 min",
     calories: "280 cal",
     preferences: ["Vegetarian", "Gluten-free", "High protein"],
-    ingredients: ["Eggs", "Spinach", "Red pepper", "Feta", "Scallions"],
+    ingredients: ["6 Eggs", "2 cups Spinach", "1 Red pepper", "1/2 cup Feta", "3 Scallions"],
     locationAvailability: ["chicago", "naperville", "austin", "seattle"]
   },
   {
@@ -110,7 +110,7 @@ const recipes = [
     time: "18 min",
     calories: "440 cal",
     preferences: ["Gluten-free", "Vegan", "Dairy-free"],
-    ingredients: ["Rice noodles", "Snap peas", "Broccoli", "Tamari", "Ginger", "Lime"],
+    ingredients: ["8 oz Rice noodles", "2 cups Snap peas", "2 cups Broccoli", "2 tbsp Tamari", "1 tbsp Ginger", "1 Lime"],
     locationAvailability: ["chicago", "austin", "seattle"]
   }
 ];
@@ -126,6 +126,7 @@ const defaultState = {
   preferences: ["Vegan"],
   favoriteRecipeIds: [],
   weeklyPlan: [],
+  manualShoppingItems: [],
   recipeRotation: 0
 };
 
@@ -152,6 +153,10 @@ const favoriteMeals = document.querySelector("#favoriteMeals");
 const recipeTemplate = document.querySelector("#recipeCardTemplate");
 const refreshRecipesButton = document.querySelector("#refreshRecipes");
 const clearWeekButton = document.querySelector("#clearWeek");
+const manualShoppingForm = document.querySelector("#manualShoppingForm");
+const manualItemName = document.querySelector("#manualItemName");
+const manualItemQuantity = document.querySelector("#manualItemQuantity");
+const manualItemUnit = document.querySelector("#manualItemUnit");
 
 const dailyCount = document.querySelector("#dailyCount");
 const favoriteCount = document.querySelector("#favoriteCount");
@@ -160,6 +165,181 @@ const storeName = document.querySelector("#storeName");
 
 function saveState() {
   localStorage.setItem(storageKey, JSON.stringify(state));
+}
+
+const unitAliases = {
+  tablespoon: "tbsp",
+  tablespoons: "tbsp",
+  tbsp: "tbsp",
+  teaspoon: "tsp",
+  teaspoons: "tsp",
+  tsp: "tsp",
+  cup: "cup",
+  cups: "cup",
+  ounce: "oz",
+  ounces: "oz",
+  oz: "oz",
+  pound: "lb",
+  pounds: "lb",
+  lb: "lb",
+  lbs: "lb",
+  can: "can",
+  cans: "can",
+  block: "block",
+  blocks: "block",
+  clove: "clove",
+  cloves: "clove",
+  head: "head",
+  heads: "head",
+  slice: "slice",
+  slices: "slice",
+  leaf: "leaf",
+  leaves: "leaf",
+  jar: "jar",
+  jars: "jar"
+};
+
+function parseQuantity(value) {
+  if (!value) {
+    return null;
+  }
+
+  if (value.includes("/")) {
+    const [numerator, denominator] = value.split("/");
+    const parsedNumerator = Number(numerator);
+    const parsedDenominator = Number(denominator);
+    if (parsedNumerator && parsedDenominator) {
+      return parsedNumerator / parsedDenominator;
+    }
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function singularizeWord(word) {
+  if (word.length <= 3) {
+    return word;
+  }
+  if (word.endsWith("ies")) {
+    return `${word.slice(0, -3)}y`;
+  }
+  if (word.endsWith("oes")) {
+    return word.slice(0, -2);
+  }
+  if (word.endsWith("ves")) {
+    return `${word.slice(0, -3)}f`;
+  }
+  if (word.endsWith("s") && !word.endsWith("ss")) {
+    return word.slice(0, -1);
+  }
+  return word;
+}
+
+function createItemId() {
+  if (crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  return `manual-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizeItemName(value) {
+  let tokens = String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9/.\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+
+  if (tokens.length && parseQuantity(tokens[0]) !== null) {
+    tokens = tokens.slice(1);
+  }
+
+  if (tokens.length && unitAliases[tokens[0]]) {
+    tokens = tokens.slice(1);
+  }
+
+  return tokens.map(singularizeWord).join(" ");
+}
+
+function parseIngredient(ingredient) {
+  let tokens = String(ingredient).trim().split(/\s+/).filter(Boolean);
+  let quantity = 1;
+  let unit = "";
+
+  if (tokens.length) {
+    const parsedQuantity = parseQuantity(tokens[0]);
+    if (parsedQuantity !== null) {
+      quantity = parsedQuantity;
+      tokens = tokens.slice(1);
+    }
+  }
+
+  if (tokens.length && unitAliases[tokens[0].toLowerCase()]) {
+    unit = unitAliases[tokens[0].toLowerCase()];
+    tokens = tokens.slice(1);
+  }
+
+  const name = tokens.join(" ") || ingredient;
+
+  return {
+    name,
+    normalizedName: normalizeItemName(ingredient),
+    quantity,
+    unit
+  };
+}
+
+function formatQuantity(quantity) {
+  return Number.isInteger(quantity) ? String(quantity) : quantity.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function formatShoppingItem(item) {
+  if (item.unit) {
+    return `${formatQuantity(item.quantity)} ${item.unit} ${item.name}`;
+  }
+  if (item.quantity !== 1) {
+    return `${formatQuantity(item.quantity)} ${item.name}`;
+  }
+  return item.name;
+}
+
+function addShoppingItemToMap(itemMap, ingredient, source) {
+  const item = parseIngredient(ingredient);
+  const key = `${item.normalizedName}::${item.unit}`;
+
+  if (!itemMap.has(key)) {
+    itemMap.set(key, {
+      ...item,
+      quantity: 0,
+      sources: [],
+      manual: false
+    });
+  }
+
+  const existing = itemMap.get(key);
+  existing.quantity += item.quantity;
+  existing.sources.push(source);
+  existing.manual = existing.manual || source === "manual";
+}
+
+function getShoppingItems() {
+  const itemMap = new Map();
+
+  state.weeklyPlan.forEach((entry) => {
+    const recipe = recipes.find((item) => item.id === entry.recipeId);
+    recipe?.ingredients.forEach((ingredient) => addShoppingItemToMap(itemMap, ingredient, "recipe"));
+  });
+
+  state.manualShoppingItems.forEach((item) => {
+    const manualText = [item.quantity, item.unit, item.name].filter(Boolean).join(" ");
+    addShoppingItemToMap(itemMap, manualText, "manual");
+  });
+
+  return [...itemMap.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
 
 function getLocationData() {
@@ -252,6 +432,37 @@ function addRecipeToWeek(recipeId) {
   state.weeklyPlan = [...state.weeklyPlan, { day: nextDay, recipeId }];
   saveState();
   render();
+}
+
+function addManualShoppingItem() {
+  const name = manualItemName.value.trim();
+  const quantity = Number(manualItemQuantity.value || 1);
+  const unit = manualItemUnit.value.trim();
+
+  if (!name || !Number.isFinite(quantity) || quantity <= 0) {
+    return;
+  }
+
+  state.manualShoppingItems = [
+    ...state.manualShoppingItems,
+    {
+      id: createItemId(),
+      name,
+      quantity,
+      unit
+    }
+  ];
+
+  manualShoppingForm.reset();
+  manualItemQuantity.value = "1";
+  saveState();
+  renderWeeklyPlan();
+}
+
+function removeManualShoppingItem(itemId) {
+  state.manualShoppingItems = state.manualShoppingItems.filter((item) => item.id !== itemId);
+  saveState();
+  renderWeeklyPlan();
 }
 
 function toggleFavorite(recipeId) {
@@ -352,16 +563,8 @@ function renderWeeklyPlan() {
     });
   }
 
-  const ingredientCounts = new Map();
-  state.weeklyPlan.forEach((entry) => {
-    const recipe = recipes.find((item) => item.id === entry.recipeId);
-    recipe?.ingredients.forEach((ingredient) => {
-      ingredientCounts.set(ingredient, (ingredientCounts.get(ingredient) || 0) + 1);
-    });
-  });
-
   shoppingList.innerHTML = "";
-  const items = [...ingredientCounts.entries()].sort((left, right) => right[1] - left[1]);
+  const items = getShoppingItems();
   shoppingCount.textContent = String(items.length);
 
   if (items.length === 0) {
@@ -369,9 +572,30 @@ function renderWeeklyPlan() {
     return;
   }
 
-  items.forEach(([ingredient, count]) => {
+  items.forEach((shoppingItem) => {
+    const recipeCount = shoppingItem.sources.filter((source) => source === "recipe").length;
+    const labels = [
+      recipeCount ? `${recipeCount} recipe${recipeCount > 1 ? "s" : ""}` : "",
+      shoppingItem.manual ? "manual" : ""
+    ].filter(Boolean);
+
     const item = document.createElement("li");
-    item.innerHTML = `<span>${ingredient}</span><strong>${count} recipe${count > 1 ? "s" : ""}</strong>`;
+    item.innerHTML = `<span>${formatShoppingItem(shoppingItem)}</span><strong>${labels.join(" + ")}</strong>`;
+
+    if (shoppingItem.manual) {
+      const matchingManualItem = state.manualShoppingItems.find(
+        (manualItem) => normalizeItemName(manualItem.name) === shoppingItem.normalizedName
+      );
+      if (matchingManualItem) {
+        const removeButton = document.createElement("button");
+        removeButton.type = "button";
+        removeButton.className = "remove-item-button";
+        removeButton.textContent = "Remove";
+        removeButton.addEventListener("click", () => removeManualShoppingItem(matchingManualItem.id));
+        item.appendChild(removeButton);
+      }
+    }
+
     shoppingList.appendChild(item);
   });
 }
@@ -459,6 +683,11 @@ clearWeekButton.addEventListener("click", () => {
   state.weeklyPlan = [];
   saveState();
   renderWeeklyPlan();
+});
+
+manualShoppingForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  addManualShoppingItem();
 });
 
 render();
