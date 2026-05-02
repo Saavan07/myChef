@@ -1,9 +1,21 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 import uuid
 import random
 import re
+
+from firebase_service import (
+    get_db,
+    user_ref,
+    recipe_ref,
+    users_col,
+    recipes_col,
+    seed_recipes_if_empty,
+)
 
 app = FastAPI()
 
@@ -131,6 +143,10 @@ recipes_db = {
     },
 }
 
+
+# ---------------------------------------------------------------------------
+# Models (unchanged)
+# ---------------------------------------------------------------------------
 
 class UserCreate(BaseModel):
     username: str
@@ -311,65 +327,72 @@ def aggregate_ingredients(ingredients, source):
 
 @app.post("/register")
 def register(user: UserCreate):
-    for u in users_db.values():
-        if u["username"] == user.username:
-            raise HTTPException(status_code=400, detail="username already taken")
-    
+    if _find_user_by_username(user.username):
+        raise HTTPException(status_code=400, detail="username already taken")
+
     user_id = str(uuid.uuid4())
-    users_db[user_id] = {
+    user_data = {
         "id": user_id,
         "username": user.username,
-        "password": user.password,
+        "password": user.password,  # TODO: hash with bcrypt before launch
         "dietary_preferences": user.dietary_preferences,
         "dietary_restrictions": user.dietary_restrictions,
         "pantry": [],
         "favorites": [],
         "shopping_list_items": [],
         "meal_plans": [],
-        "meal_history": []
+        "meal_history": [],
     }
+    user_ref(user_id).set(user_data)
     return {"message": "user created", "user_id": user_id}
 
 
 @app.post("/login")
 def login(user: UserLogin):
-    for u in users_db.values():
-        if u["username"] == user.username and u["password"] == user.password:
-            return {"message": "login successful", "user_id": u["id"]}
+    existing = _find_user_by_username(user.username)
+    if existing and existing["password"] == user.password:
+        # TODO: return a signed JWT here
+        return {"message": "login successful", "user_id": existing["id"]}
     raise HTTPException(status_code=401, detail="invalid credentials")
 
 
+# ---------------------------------------------------------------------------
+# User preferences
+# ---------------------------------------------------------------------------
+
 @app.get("/users/{user_id}/preferences")
 def get_preferences(user_id: str):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
+    user = _get_user_or_404(user_id)
     return {
-        "dietary_preferences": users_db[user_id]["dietary_preferences"],
-        "dietary_restrictions": users_db[user_id].get("dietary_restrictions", [])
+        "dietary_preferences": user["dietary_preferences"],
+        "dietary_restrictions": user.get("dietary_restrictions", []),
     }
 
 
 @app.post("/users/{user_id}/preferences")
 def update_preferences(user_id: str, prefs: PreferencesUpdate):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
-    users_db[user_id]["dietary_preferences"] = prefs.dietary_preferences
-    users_db[user_id]["dietary_restrictions"] = prefs.dietary_restrictions or []
+    _get_user_or_404(user_id)
+    user_ref(user_id).update({
+        "dietary_preferences": prefs.dietary_preferences,
+        "dietary_restrictions": prefs.dietary_restrictions or [],
+    })
     return {"message": "preferences updated"}
 
 
+# ---------------------------------------------------------------------------
+# Pantry
+# ---------------------------------------------------------------------------
+
 @app.get("/users/{user_id}/pantry")
 def get_pantry(user_id: str):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
-    return {"pantry": users_db[user_id].get("pantry", [])}
+    user = _get_user_or_404(user_id)
+    return {"pantry": user.get("pantry", [])}
 
 
 @app.post("/users/{user_id}/pantry")
 def update_pantry(user_id: str, pantry: PantryUpdate):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
-    users_db[user_id]["pantry"] = pantry.items
+    _get_user_or_404(user_id)
+    user_ref(user_id).update({"pantry": pantry.items})
     return {"message": "pantry updated", "pantry": pantry.items}
 
 
@@ -386,50 +409,59 @@ def remove_from_pantry(user_id: str, item: str):
     return {"message": f"removed {item_to_remove} from pantry"}
 
 
+# ---------------------------------------------------------------------------
+# Recipes
+# ---------------------------------------------------------------------------
+
 @app.get("/recipes")
 def get_recipes(tag: Optional[str] = None):
-    results = list(recipes_db.values())
+    query = recipes_col()
     if tag:
-        results = [r for r in results if tag in r["dietary_tags"]]
-    return results
+        # Firestore array-contains — no extra index needed
+        query = query.where("dietary_tags", "array_contains", tag)
+    return [doc.to_dict() for doc in query.stream()]
 
 
 @app.get("/recipes/{recipe_id}")
 def get_recipe(recipe_id: str):
-    if recipe_id not in recipes_db:
-        raise HTTPException(status_code=404, detail="recipe not found")
-    return recipes_db[recipe_id]
+    return _get_recipe_or_404(recipe_id)
 
+
+# ---------------------------------------------------------------------------
+# Favorites
+# ---------------------------------------------------------------------------
 
 @app.get("/users/{user_id}/favorites")
 def get_favorites(user_id: str):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
-    favorite_ids = users_db[user_id]["favorites"]
-    return [recipes_db[rid] for rid in favorite_ids if rid in recipes_db]
+    user = _get_user_or_404(user_id)
+    results = []
+    for rid in user["favorites"]:
+        doc = recipe_ref(rid).get()
+        if doc.exists:
+            results.append(doc.to_dict())
+    return results
 
 
 @app.post("/users/{user_id}/favorites/{recipe_id}")
 def add_favorite(user_id: str, recipe_id: str):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
-    if recipe_id not in recipes_db:
-        raise HTTPException(status_code=404, detail="recipe not found")
-    favorites = users_db[user_id]["favorites"]
+    user = _get_user_or_404(user_id)
+    _get_recipe_or_404(recipe_id)
+    favorites = user["favorites"]
     if recipe_id in favorites:
         return {"message": "already in favorites"}
     favorites.append(recipe_id)
+    user_ref(user_id).update({"favorites": favorites})
     return {"message": "added to favorites"}
 
 
 @app.delete("/users/{user_id}/favorites/{recipe_id}")
 def remove_favorite(user_id: str, recipe_id: str):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
-    favorites = users_db[user_id]["favorites"]
+    user = _get_user_or_404(user_id)
+    favorites = user["favorites"]
     if recipe_id not in favorites:
         raise HTTPException(status_code=404, detail="recipe not in favorites")
     favorites.remove(recipe_id)
+    user_ref(user_id).update({"favorites": favorites})
     return {"message": "removed from favorites"}
 
 
@@ -534,14 +566,11 @@ def pick_recipe_for_slot(candidates, meal_type, user, recently_used_ids, current
 
 @app.post("/users/{user_id}/meal-plan/generate")
 def generate_meal_plan(user_id: str):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
-
-    user = users_db[user_id]
+    user = _get_user_or_404(user_id)
     prefs = [p.lower() for p in user["dietary_preferences"]]
     restrictions = user.get("dietary_restrictions", [])
 
-    all_recipes = list(recipes_db.values())
+    all_recipes = _all_recipes()
 
     filtered = []
     for r in all_recipes:
@@ -555,15 +584,10 @@ def generate_meal_plan(user_id: str):
 
     if not filtered:
         filtered = [r for r in all_recipes if passes_restrictions(r, restrictions)]
-
     if not filtered:
         filtered = all_recipes
 
-    meal_slots = [
-        "breakfast", "lunch", "dinner",
-        "breakfast", "lunch", "dinner",
-        "dinner"
-    ]
+    meal_slots = ["breakfast", "lunch", "dinner", "breakfast", "lunch", "dinner", "dinner"]
 
     plan_ids = []
     recently_used = []
@@ -573,65 +597,84 @@ def generate_meal_plan(user_id: str):
         plan_ids.append(chosen["id"])
         recently_used.append(chosen["id"])
 
-    user["meal_history"].extend(plan_ids)
+    # Persist updated meal_history and the new plan atomically
+    updated_history = user.get("meal_history", []) + plan_ids
+    meal_plan = {"id": str(uuid.uuid4()), "recipe_ids": plan_ids}
+    updated_plans = user.get("meal_plans", []) + [meal_plan]
 
-    meal_plan = {
-        "id": str(uuid.uuid4()),
-        "recipe_ids": plan_ids
-    }
-    user["meal_plans"].append(meal_plan)
+    user_ref(user_id).update({
+        "meal_history": updated_history,
+        "meal_plans": updated_plans,
+    })
+
     return meal_plan
 
 
 @app.get("/users/{user_id}/meal-plans")
 def get_meal_plans(user_id: str):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
-    return users_db[user_id]["meal_plans"]
+    user = _get_user_or_404(user_id)
+    return user.get("meal_plans", [])
 
+
+# ---------------------------------------------------------------------------
+# Manual swap
+# ---------------------------------------------------------------------------
 
 @app.post("/users/{user_id}/meal-plans/{plan_id}/swap")
 def swap_meal(user_id: str, plan_id: str, swap: SwapMeal):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
-    if swap.new_recipe_id not in recipes_db:
-        raise HTTPException(status_code=404, detail="recipe not found")
+    user = _get_user_or_404(user_id)
+    _get_recipe_or_404(swap.new_recipe_id)
+
     if swap.day_index < 0 or swap.day_index > 6:
         raise HTTPException(status_code=400, detail="day_index must be 0-6")
 
-    user = users_db[user_id]
-    plan = next((p for p in user["meal_plans"] if p["id"] == plan_id), None)
+    meal_plans = user.get("meal_plans", [])
+    plan = next((p for p in meal_plans if p["id"] == plan_id), None)
     if not plan:
         raise HTTPException(status_code=404, detail="meal plan not found")
 
     old_recipe_id = plan["recipe_ids"][swap.day_index]
     plan["recipe_ids"][swap.day_index] = swap.new_recipe_id
+
+    user_ref(user_id).update({"meal_plans": meal_plans})
+
     return {
         "message": "meal swapped",
         "day": swap.day_index,
         "old_recipe": old_recipe_id,
-        "new_recipe": swap.new_recipe_id
+        "new_recipe": swap.new_recipe_id,
     }
 
 
+# ---------------------------------------------------------------------------
+# Auto swap
+# ---------------------------------------------------------------------------
+
 @app.post("/users/{user_id}/meal-plans/{plan_id}/swap-auto")
 def swap_meal_auto(user_id: str, plan_id: str, day_index: int):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
+    user = _get_user_or_404(user_id)
+
     if day_index < 0 or day_index > 6:
         raise HTTPException(status_code=400, detail="day_index must be 0-6")
 
-    user = users_db[user_id]
-    plan = next((p for p in user["meal_plans"] if p["id"] == plan_id), None)
+    meal_plans = user.get("meal_plans", [])
+    plan = next((p for p in meal_plans if p["id"] == plan_id), None)
     if not plan:
         raise HTTPException(status_code=404, detail="meal plan not found")
 
     prefs = [p.lower() for p in user["dietary_preferences"]]
     restrictions = user.get("dietary_restrictions", [])
     current_recipe_id = plan["recipe_ids"][day_index]
-    current_meal_type = recipes_db.get(current_recipe_id, {}).get("meal_type", "dinner")
 
-    all_recipes = list(recipes_db.values())
+    # Fetch the current recipe's meal_type from Firestore
+    current_recipe_doc = recipe_ref(current_recipe_id).get()
+    current_meal_type = (
+        current_recipe_doc.to_dict().get("meal_type", "dinner")
+        if current_recipe_doc.exists
+        else "dinner"
+    )
+
+    all_recipes = _all_recipes()
 
     filtered = []
     for r in all_recipes:
@@ -646,7 +689,10 @@ def swap_meal_auto(user_id: str, plan_id: str, day_index: int):
         filtered.append(r)
 
     if not filtered:
-        filtered = [r for r in all_recipes if r["id"] != current_recipe_id and passes_restrictions(r, restrictions)]
+        filtered = [
+            r for r in all_recipes
+            if r["id"] != current_recipe_id and passes_restrictions(r, restrictions)
+        ]
 
     if not filtered:
         raise HTTPException(status_code=400, detail="no other recipes available to swap in")
@@ -654,28 +700,33 @@ def swap_meal_auto(user_id: str, plan_id: str, day_index: int):
     chosen = pick_recipe_for_slot(filtered, current_meal_type, user, plan["recipe_ids"], plan["recipe_ids"])
 
     plan["recipe_ids"][day_index] = chosen["id"]
+    user_ref(user_id).update({"meal_plans": meal_plans})
+
     return {
         "message": "meal swapped",
         "day": day_index,
         "old_recipe": current_recipe_id,
-        "new_recipe": chosen["id"]
+        "new_recipe": chosen["id"],
     }
 
 
+# ---------------------------------------------------------------------------
+# Shopping list
+# ---------------------------------------------------------------------------
+
 @app.get("/users/{user_id}/meal-plans/{plan_id}/shopping-list")
 def get_shopping_list(user_id: str, plan_id: str):
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="user not found")
+    user = _get_user_or_404(user_id)
 
-    user = users_db[user_id]
-    plan = next((p for p in user["meal_plans"] if p["id"] == plan_id), None)
+    plan = next((p for p in user.get("meal_plans", []) if p["id"] == plan_id), None)
     if not plan:
         raise HTTPException(status_code=404, detail="meal plan not found")
 
     all_ingredients = []
     for recipe_id in plan["recipe_ids"]:
-        if recipe_id in recipes_db:
-            all_ingredients.extend(recipes_db[recipe_id]["ingredients"])
+        doc = recipe_ref(recipe_id).get()
+        if doc.exists:
+            all_ingredients.extend(doc.to_dict().get("ingredients", []))
 
     aggregated = aggregate_ingredients(all_ingredients, "meal_plan")
     for manual_item in user.get("shopping_list_items", []):
