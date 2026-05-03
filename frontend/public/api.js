@@ -134,5 +134,25 @@ export const api = {
   },
   getShoppingList(userId, planId) {
     return request(`/users/${userId}/meal-plans/${planId}/shopping-list`);
+  },
+  findNearbyStores(payload) {
+    return request("/stores/nearby", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  },
+  getStoreReviews(storeId) {
+    return request(`/stores/${storeId}/reviews`);
+  },
+  addStoreReview(storeId, payload) {
+    return request(`/stores/${storeId}/reviews`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  },
+  deleteStoreReview(storeId, userId) {
+    return request(`/stores/${storeId}/reviews/${userId}`, {
+      method: "DELETE"
+    });
   }
 };

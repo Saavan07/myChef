@@ -2,6 +2,13 @@ import { api } from "/api.js";
 
 const storageKey = "mychef-session";
 const weekDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const recipesPerPage = 4;
+const storesPerPage = 3;
+const defaultShopLocation = {
+  latitude: 40.1106,
+  longitude: -88.2284,
+  label: "UIUC campus default"
+};
 
 const state = {
   userId: null,
@@ -14,6 +21,7 @@ const state = {
   recipeFilter: "",
   allRecipes: [],
   recipes: [],
+  recipePage: 1,
   recipeDetails: new Map(),
   selectedRecipeId: null,
   preferences: [],
@@ -23,6 +31,11 @@ const state = {
   manualShoppingItems: [],
   mealPlans: [],
   activePlanId: null,
+  shopLocation: null,
+  nearbyStores: [],
+  storePage: 1,
+  selectedStoreId: null,
+  storeReviews: {},
   shoppingListItems: [],
   alreadyHaveItems: [],
   panelLoading: {
@@ -32,7 +45,9 @@ const state = {
     favorites: false,
     mealPlans: false,
     shoppingList: false,
-    manualShopping: false
+    manualShopping: false,
+    stores: false,
+    storeReviews: false
   },
   panelErrors: {
     recipes: "",
@@ -41,7 +56,9 @@ const state = {
     favorites: "",
     mealPlans: "",
     shoppingList: "",
-    manualShopping: ""
+    manualShopping: "",
+    stores: "",
+    storeReviews: ""
   }
 };
 
@@ -64,12 +81,20 @@ const elements = {
   recipeFilter: document.querySelector("#recipeFilter"),
   refreshRecipesButton: document.querySelector("#refreshRecipes"),
   recipeGrid: document.querySelector("#recipeGrid"),
+  recipePagination: document.querySelector("#recipePagination"),
   recipeDetail: document.querySelector("#recipeDetail"),
   generatePlanButton: document.querySelector("#generatePlanButton"),
   reloadPlansButton: document.querySelector("#reloadPlansButton"),
   planPickerWrap: document.querySelector("#planPickerWrap"),
   planPicker: document.querySelector("#planPicker"),
   weeklyMeals: document.querySelector("#weeklyMeals"),
+  captureLocationButton: document.querySelector("#captureLocationButton"),
+  shopNowButton: document.querySelector("#shopNowButton"),
+  locationQueryInput: document.querySelector("#locationQueryInput"),
+  locationStatus: document.querySelector("#locationStatus"),
+  storeResults: document.querySelector("#storeResults"),
+  storePagination: document.querySelector("#storePagination"),
+  storeDetail: document.querySelector("#storeDetail"),
   manualShoppingForm: document.querySelector("#manualShoppingForm"),
   manualItemName: document.querySelector("#manualItemName"),
   manualItemQuantity: document.querySelector("#manualItemQuantity"),
@@ -114,6 +139,11 @@ function clearSession() {
   state.manualShoppingItems = [];
   state.mealPlans = [];
   state.activePlanId = null;
+  state.shopLocation = null;
+  state.nearbyStores = [];
+  state.storePage = 1;
+  state.selectedStoreId = null;
+  state.storeReviews = {};
   state.shoppingListItems = [];
   state.alreadyHaveItems = [];
   persistSession();
@@ -157,6 +187,18 @@ function createEmptyState(message) {
   return empty;
 }
 
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (character) => {
+    return {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[character];
+  });
+}
+
 function getAllTags() {
   return [...new Set(state.allRecipes.flatMap((recipe) => recipe.dietary_tags || []))].sort();
 }
@@ -165,8 +207,103 @@ function getRecipeById(recipeId) {
   return state.allRecipes.find((recipe) => recipe.id === recipeId) || null;
 }
 
+function getRecipePageCount() {
+  return Math.max(1, Math.ceil(state.recipes.length / recipesPerPage));
+}
+
+function getVisibleRecipes() {
+  const pageCount = getRecipePageCount();
+  const currentPage = Math.min(state.recipePage, pageCount);
+  const start = (currentPage - 1) * recipesPerPage;
+  return state.recipes.slice(start, start + recipesPerPage);
+}
+
 function getActivePlan() {
   return state.mealPlans.find((plan) => plan.id === state.activePlanId) || null;
+}
+
+function formatDistance(distanceMiles) {
+  if (distanceMiles === null || distanceMiles === undefined || Number.isNaN(distanceMiles)) {
+    return "Distance unavailable";
+  }
+
+  if (distanceMiles < 0.2) {
+    return "Less than 0.2 mi away";
+  }
+
+  return `${distanceMiles.toFixed(1)} mi away`;
+}
+
+function getSelectedStore() {
+  return state.nearbyStores.find((store) => store.store_id === state.selectedStoreId) || null;
+}
+
+function getStoreReviews(storeId) {
+  return state.storeReviews[storeId] || [];
+}
+
+function getAverageStoreRating(storeId) {
+  const reviews = getStoreReviews(storeId);
+  if (!reviews.length) {
+    return null;
+  }
+
+  const total = reviews.reduce((sum, review) => sum + review.rating, 0);
+  return total / reviews.length;
+}
+
+function formatStarRating(rating) {
+  if (!rating) {
+    return "N/A";
+  }
+
+  const rounded = Math.round(rating);
+  return `${"★".repeat(rounded)}${"☆".repeat(5 - rounded)}`;
+}
+
+function parseCoordinateQuery(value) {
+  const match = String(value).trim().match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+  if (!match) {
+    return null;
+  }
+
+  const latitude = Number(match[1]);
+  const longitude = Number(match[2]);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return null;
+  }
+
+  return { latitude, longitude };
+}
+
+async function loadStoreReviews(storeId) {
+  setPanelLoading("storeReviews", true);
+  setPanelError("storeReviews", "");
+
+  try {
+    const response = await api.getStoreReviews(storeId);
+    state.storeReviews[storeId] = response.reviews || [];
+    state.nearbyStores = state.nearbyStores.map((store) => {
+      return store.store_id === storeId ? { ...store, ...response.store } : store;
+    });
+  } catch (error) {
+    setPanelError("storeReviews", error.message);
+    setError(error.message);
+  } finally {
+    setPanelLoading("storeReviews", false);
+    renderStoreFinder();
+  }
+}
+
+function getStorePageCount() {
+  return Math.max(1, Math.ceil(state.nearbyStores.length / storesPerPage));
+}
+
+function getVisibleStores() {
+  const pageCount = getStorePageCount();
+  const currentPage = Math.min(state.storePage, pageCount);
+  const start = (currentPage - 1) * storesPerPage;
+  return state.nearbyStores.slice(start, start + storesPerPage);
 }
 
 async function fetchRecipeDetails(recipeId) {
@@ -187,6 +324,7 @@ async function loadRecipes() {
     const allRecipes = await api.getRecipes();
     state.allRecipes = allRecipes;
     state.recipes = state.recipeFilter ? await api.getRecipes(state.recipeFilter) : allRecipes;
+    state.recipePage = 1;
 
     if (!state.selectedRecipeId || !getRecipeById(state.selectedRecipeId)) {
       state.selectedRecipeId = state.recipes[0]?.id || null;
@@ -575,6 +713,7 @@ function renderRecipes() {
   });
 
   elements.recipeGrid.innerHTML = "";
+  elements.recipePagination.innerHTML = "";
 
   if (state.panelLoading.recipes) {
     elements.recipeGrid.appendChild(createEmptyState("Loading recipes..."));
@@ -591,9 +730,326 @@ function renderRecipes() {
     return;
   }
 
-  state.recipes.forEach((recipe) => {
+  const pageCount = getRecipePageCount();
+  state.recipePage = Math.min(state.recipePage, pageCount);
+
+  getVisibleRecipes().forEach((recipe) => {
     elements.recipeGrid.appendChild(recipeCard(recipe));
   });
+
+  renderRecipePagination();
+}
+
+function renderRecipePagination() {
+  const pageCount = getRecipePageCount();
+
+  if (state.recipes.length <= recipesPerPage) {
+    elements.recipePagination.innerHTML = "";
+    return;
+  }
+
+  const previousButton = document.createElement("button");
+  previousButton.type = "button";
+  previousButton.className = "pagination-button secondary-button";
+  previousButton.textContent = "Previous";
+  previousButton.disabled = state.recipePage === 1;
+  previousButton.addEventListener("click", () => {
+    state.recipePage -= 1;
+    renderRecipes();
+  });
+
+  const status = document.createElement("span");
+  status.className = "pagination-status";
+  status.textContent = `Page ${state.recipePage} of ${pageCount}`;
+
+  const nextButton = document.createElement("button");
+  nextButton.type = "button";
+  nextButton.className = "pagination-button secondary-button";
+  nextButton.textContent = "Next";
+  nextButton.disabled = state.recipePage === pageCount;
+  nextButton.addEventListener("click", () => {
+    state.recipePage += 1;
+    renderRecipes();
+  });
+
+  elements.recipePagination.append(previousButton, status, nextButton);
+}
+
+function renderStoreFinder() {
+  const requiresPlan = !state.userId || !state.activePlanId;
+  elements.captureLocationButton.disabled = !state.userId || state.panelLoading.stores;
+  elements.shopNowButton.disabled = requiresPlan || state.panelLoading.stores;
+  elements.locationQueryInput.disabled = !state.userId || state.panelLoading.stores;
+
+  if (!state.userId) {
+    elements.locationStatus.textContent = "Login to find nearby grocery stores.";
+  } else if (!state.activePlanId) {
+    elements.locationStatus.textContent = "Generate or load a meal plan before shopping.";
+  } else if (state.panelLoading.stores) {
+    elements.locationStatus.textContent = "Looking up nearby grocery stores...";
+  } else if (state.panelErrors.stores) {
+    elements.locationStatus.textContent = state.panelErrors.stores;
+  } else {
+    elements.locationStatus.textContent = "";
+  }
+
+  elements.storeResults.innerHTML = "";
+  elements.storePagination.innerHTML = "";
+  elements.storeDetail.innerHTML = "";
+
+  if (!state.userId) {
+    elements.storeResults.appendChild(createEmptyState("Nearby grocery stores appear here after login."));
+    return;
+  }
+
+  if (!state.activePlanId) {
+    elements.storeResults.appendChild(createEmptyState("Create a meal plan to start shopping nearby."));
+    return;
+  }
+
+  if (state.panelLoading.stores) {
+    elements.storeResults.appendChild(createEmptyState("Finding nearby stores..."));
+    return;
+  }
+
+  if (!state.nearbyStores.length) {
+    elements.storeResults.appendChild(createEmptyState("No store lookup yet. Click Shop now to use your saved or default location."));
+    return;
+  }
+
+  const pageCount = getStorePageCount();
+  state.storePage = Math.min(state.storePage, pageCount);
+
+  getVisibleStores().forEach((store) => {
+    const averageRating = store.average_rating ?? getAverageStoreRating(store.store_id);
+    const card = document.createElement("article");
+    card.className = "store-card";
+    card.innerHTML = `
+      <div class="store-card-rating">
+        <div class="store-stars">${formatStarRating(averageRating)}</div>
+        <span>${averageRating ? `${averageRating.toFixed(1)} / 5` : "N/A"}</span>
+      </div>
+      <div class="store-card-body">
+        <div>
+          <h4>${escapeHtml(store.name)}</h4>
+          <p class="inline-note">${formatDistance(store.distance_miles)}</p>
+        </div>
+        <button type="button" class="secondary-button" data-action="view-reviews">View reviews</button>
+      </div>
+    `;
+
+    card.querySelector('[data-action="view-reviews"]').addEventListener("click", () => {
+      state.selectedStoreId = store.store_id;
+      loadStoreReviews(store.store_id);
+    });
+
+    elements.storeResults.appendChild(card);
+  });
+
+  renderStorePagination();
+  renderStoreDetail();
+}
+
+function renderStorePagination() {
+  const pageCount = getStorePageCount();
+
+  if (state.nearbyStores.length <= storesPerPage) {
+    elements.storePagination.innerHTML = "";
+    return;
+  }
+
+  const previousButton = document.createElement("button");
+  previousButton.type = "button";
+  previousButton.className = "pagination-button secondary-button";
+  previousButton.textContent = "Previous";
+  previousButton.disabled = state.storePage === 1;
+  previousButton.addEventListener("click", () => {
+    state.storePage -= 1;
+    renderStoreFinder();
+  });
+
+  const status = document.createElement("span");
+  status.className = "pagination-status";
+  status.textContent = `Page ${state.storePage} of ${pageCount}`;
+
+  const nextButton = document.createElement("button");
+  nextButton.type = "button";
+  nextButton.className = "pagination-button secondary-button";
+  nextButton.textContent = "Next";
+  nextButton.disabled = state.storePage === pageCount;
+  nextButton.addEventListener("click", () => {
+    state.storePage += 1;
+    renderStoreFinder();
+  });
+
+  elements.storePagination.append(previousButton, status, nextButton);
+}
+
+function renderStoreDetail() {
+  const store = getSelectedStore();
+  elements.storeDetail.innerHTML = "";
+
+  if (!store) {
+    return;
+  }
+
+  const reviews = getStoreReviews(store.store_id);
+  const averageRating = store.average_rating ?? getAverageStoreRating(store.store_id);
+  const reviewCountLabel = `${reviews.length} review${reviews.length === 1 ? "" : "s"}`;
+  const currentUserReview = reviews.find((review) => review.user_id === state.userId) || null;
+  const submitLabel = state.panelLoading.storeReviews
+    ? currentUserReview ? "Saving..." : "Submitting..."
+    : currentUserReview ? "Edit review" : "Submit review";
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "store-review-layout";
+  wrapper.innerHTML = `
+    <section class="review-profile-card">
+      <div class="review-profile-header">
+        <div>
+          <p class="eyebrow">Store Profile</p>
+          <h3>${escapeHtml(store.name)}</h3>
+          <p class="inline-note">${formatDistance(store.distance_miles)} from your selected location.</p>
+        </div>
+        <button type="button" class="secondary-button" data-action="close-reviews">Back to stores</button>
+      </div>
+      <div class="review-summary-grid">
+        <div class="review-summary-stat">
+          <span class="review-summary-label">Average rating</span>
+          <strong>${averageRating ? `${averageRating.toFixed(2)} / 5` : "N/A"}</strong>
+        </div>
+        <div class="review-summary-stat">
+          <span class="review-summary-label">Stars</span>
+          <strong>${formatStarRating(averageRating)}</strong>
+        </div>
+        <div class="review-summary-stat">
+          <span class="review-summary-label">Total reviews</span>
+          <strong>${reviews.length}</strong>
+        </div>
+      </div>
+    </section>
+    <section class="review-write-card">
+      <p class="eyebrow">Write A Review</p>
+      <h3>Share your experience</h3>
+      <form id="storeReviewForm" class="store-review-form">
+        <label>
+          Rating
+          <select name="rating">
+            <option value="5" ${currentUserReview?.rating === 5 ? "selected" : ""}>5 stars</option>
+            <option value="4" ${currentUserReview?.rating === 4 ? "selected" : ""}>4 stars</option>
+            <option value="3" ${currentUserReview?.rating === 3 ? "selected" : ""}>3 stars</option>
+            <option value="2" ${currentUserReview?.rating === 2 ? "selected" : ""}>2 stars</option>
+            <option value="1" ${currentUserReview?.rating === 1 ? "selected" : ""}>1 star</option>
+          </select>
+        </label>
+        <label class="store-review-text">
+          Review
+          <textarea name="review" rows="4" placeholder="Describe your experience at this store." required>${escapeHtml(currentUserReview?.comment || "")}</textarea>
+        </label>
+        <div class="review-form-actions">
+          <button type="submit">${submitLabel}</button>
+          <button type="button" class="secondary-button" data-action="delete-review" ${currentUserReview ? "" : "disabled"}>Delete review</button>
+        </div>
+      </form>
+    </section>
+    <section class="review-list-card">
+      <p class="eyebrow">User Reviews</p>
+      <h3>${reviewCountLabel}</h3>
+      <div class="review-list">
+        ${
+          state.panelLoading.storeReviews && !reviews.length
+            ? `<div class="empty-state">Loading reviews...</div>`
+            : reviews.length
+            ? reviews.map((review) => `
+              <article class="user-review-card">
+                <div class="user-review-header">
+                  <div>
+                    <strong>${escapeHtml(review.username)}</strong>
+                    <p>${escapeHtml(review.created_at)}</p>
+                  </div>
+                  <span class="review-stars">${formatStarRating(review.rating)}</span>
+                </div>
+                <p>${escapeHtml(review.comment)}</p>
+              </article>
+            `).join("")
+            : `<div class="empty-state">No reviews yet for this grocery store.</div>`
+        }
+      </div>
+    </section>
+  `;
+
+  wrapper.querySelector('[data-action="close-reviews"]').addEventListener("click", () => {
+    state.selectedStoreId = null;
+    renderStoreFinder();
+  });
+
+  wrapper.querySelector("#storeReviewForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const comment = String(formData.get("review") || "").trim();
+
+    if (!comment) {
+      return;
+    }
+
+    clearBanners();
+    setPanelLoading("storeReviews", true);
+    setPanelError("storeReviews", "");
+    renderStoreFinder();
+
+    api.addStoreReview(store.store_id, {
+      user_id: state.userId,
+      rating: Number(formData.get("rating")),
+      comment,
+      store_name: store.name,
+      latitude: store.latitude,
+      longitude: store.longitude
+    }).then((response) => {
+      state.storeReviews[store.store_id] = response.reviews || [];
+      state.nearbyStores = state.nearbyStores.map((entry) => {
+        return entry.store_id === store.store_id ? { ...entry, ...response.store } : entry;
+      });
+      setStatus(currentUserReview ? `Review updated for ${store.name}.` : `Review saved for ${store.name}.`);
+    }).catch((error) => {
+      setPanelError("storeReviews", error.message);
+      setError(error.message);
+    }).finally(() => {
+      setPanelLoading("storeReviews", false);
+      renderStoreFinder();
+    });
+  });
+
+  const submitButton = wrapper.querySelector("#storeReviewForm button");
+  submitButton.disabled = state.panelLoading.storeReviews;
+
+  const deleteButton = wrapper.querySelector('[data-action="delete-review"]');
+  deleteButton.disabled = !currentUserReview || state.panelLoading.storeReviews;
+  deleteButton.addEventListener("click", () => {
+    if (!currentUserReview) {
+      return;
+    }
+
+    clearBanners();
+    setPanelLoading("storeReviews", true);
+    setPanelError("storeReviews", "");
+    renderStoreFinder();
+
+    api.deleteStoreReview(store.store_id, state.userId).then((response) => {
+      state.storeReviews[store.store_id] = response.reviews || [];
+      state.nearbyStores = state.nearbyStores.map((entry) => {
+        return entry.store_id === store.store_id ? { ...entry, ...response.store } : entry;
+      });
+      setStatus(`Review deleted for ${store.name}.`);
+    }).catch((error) => {
+      setPanelError("storeReviews", error.message);
+      setError(error.message);
+    }).finally(() => {
+      setPanelLoading("storeReviews", false);
+      renderStoreFinder();
+    });
+  });
+
+  elements.storeDetail.appendChild(wrapper);
 }
 
 function renderManualShoppingItems() {
@@ -766,6 +1222,7 @@ function renderPlanner() {
 
   renderManualShoppingItems();
   renderShoppingLists();
+  renderStoreFinder();
 }
 
 function renderFavorites() {
@@ -902,6 +1359,7 @@ elements.pantryForm.addEventListener("submit", async (event) => {
 
 elements.recipeFilter.addEventListener("change", async (event) => {
   state.recipeFilter = event.target.value;
+  state.recipePage = 1;
   await loadRecipes();
 });
 
@@ -932,6 +1390,88 @@ elements.generatePlanButton.addEventListener("click", async () => {
   } finally {
     setPanelLoading("mealPlans", false);
     renderPlanner();
+  }
+});
+
+elements.captureLocationButton.addEventListener("click", () => {
+  if (!navigator.geolocation) {
+    setPanelError("stores", "This browser does not support location lookup.");
+    renderStoreFinder();
+    return;
+  }
+
+  clearBanners();
+  setPanelError("stores", "");
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      state.shopLocation = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        label: `${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`
+      };
+      elements.locationQueryInput.value = state.shopLocation.label;
+      setStatus("Location captured. Click Shop now to find nearby grocery stores.");
+      renderStoreFinder();
+    },
+    (error) => {
+      setPanelError("stores", error.message || "Location access was denied.");
+      renderStoreFinder();
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 300000
+    }
+  );
+});
+
+elements.shopNowButton.addEventListener("click", async () => {
+  if (!state.userId) {
+    setError("Login required before shopping nearby.");
+    return;
+  }
+
+  if (!state.activePlanId) {
+    setError("Generate a meal plan before shopping nearby.");
+    return;
+  }
+
+  clearBanners();
+  setPanelError("stores", "");
+  setPanelLoading("stores", true);
+  state.storePage = 1;
+  renderStoreFinder();
+
+  try {
+    const lookupLocation = state.shopLocation || defaultShopLocation;
+    const queryText = elements.locationQueryInput.value.trim();
+    const coordinateQuery = parseCoordinateQuery(queryText);
+    const payload = coordinateQuery
+      ? {
+          latitude: coordinateQuery.latitude,
+          longitude: coordinateQuery.longitude
+        }
+      : queryText
+        ? { location_query: queryText }
+        : {
+            latitude: lookupLocation.latitude,
+            longitude: lookupLocation.longitude
+          };
+
+    const response = await api.findNearbyStores(payload);
+    state.nearbyStores = response.stores || [];
+    state.selectedStoreId = null;
+    if (response.resolved_location) {
+      elements.locationQueryInput.value = response.resolved_location;
+    }
+    setStatus(`Nearby grocery stores loaded using ${response.resolved_location || queryText || lookupLocation.label}.`);
+  } catch (error) {
+    state.nearbyStores = [];
+    setPanelError("stores", error.message);
+    setError(error.message);
+  } finally {
+    setPanelLoading("stores", false);
+    renderStoreFinder();
   }
 });
 

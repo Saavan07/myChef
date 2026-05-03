@@ -73,9 +73,9 @@
             </label>
             <button id="savePreferencesButton" type="button">Save preferences</button>
             <div class="subsection">
-              <div class="split-heading">
+              <div class="subsection-header">
                 <h3>Pantry</h3>
-                <span class="inline-note">Pantry items remove duplicates from shopping suggestions.</span>
+                <p class="inline-note">Pantry items remove duplicates from shopping suggestions.</p>
               </div>
               <form id="pantryForm" class="pantry-form">
                 <input type="text" id="pantryInput" placeholder="Add ingredient" />
@@ -102,6 +102,7 @@
             </div>
           </div>
           <div id="recipeGrid" class="recipe-grid"></div>
+          <div id="recipePagination" class="pagination"></div>
           <div id="recipeDetail" class="recipe-detail"></div>
         </section>
 
@@ -153,9 +154,35 @@
           </div>
         </section>
 
+        <section class="panel stores-panel">
+          <div class="section-heading">
+            <p class="eyebrow">5. Grocery Search</p>
+            <h2>Find the closest stores</h2>
+          </div>
+          <div class="shopping-list store-finder">
+            <div class="split-heading">
+              <div>
+                <h3>Nearby grocery stores</h3>
+              </div>
+              <div class="shop-actions">
+                <button id="captureLocationButton" type="button" class="secondary-button">Use my location</button>
+                <button id="shopNowButton" type="button">Shop now</button>
+              </div>
+            </div>
+            <label class="stacked-field">
+              Search location
+              <input id="locationQueryInput" type="text" placeholder="Hopkins Hall" />
+            </label>
+            <p id="locationStatus" class="panel-message"></p>
+            <div id="storeResults" class="store-results"></div>
+            <div id="storePagination" class="pagination"></div>
+            <div id="storeDetail" class="store-detail"></div>
+          </div>
+        </section>
+
         <section class="panel favorites-panel">
           <div class="section-heading">
-            <p class="eyebrow">5. Favorites</p>
+            <p class="eyebrow">6. Favorites</p>
             <h2>Keep meals for later</h2>
           </div>
           <div id="favoriteMeals" class="favorites-list"></div>

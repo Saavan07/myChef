@@ -188,6 +188,7 @@ li,
 }
 
 .planner-panel,
+.stores-panel,
 .favorites-panel {
   grid-column: span 6;
 }
@@ -208,6 +209,26 @@ li,
 .subsection {
   display: grid;
   gap: 12px;
+}
+
+.subsection {
+  margin-top: 28px;
+  padding-top: 8px;
+}
+
+.subsection-header {
+  display: grid;
+  gap: 6px;
+}
+
+.subsection-header h3 {
+  line-height: 1;
+}
+
+.subsection-header .inline-note {
+  margin: 0;
+  max-width: 24ch;
+  line-height: 1.35;
 }
 
 label {
@@ -287,6 +308,10 @@ button:disabled {
   gap: 10px;
 }
 
+.pantry-form {
+  align-items: end;
+}
+
 .manual-item-form {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -333,6 +358,24 @@ button:disabled {
   margin-top: 18px;
 }
 
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.pagination-button {
+  min-width: 110px;
+}
+
+.pagination-status {
+  color: var(--muted);
+  font-size: 0.94rem;
+  font-weight: 600;
+}
+
 .weekly-card {
   display: grid;
   gap: 10px;
@@ -344,6 +387,19 @@ button:disabled {
 
 .shopping-grid > * {
   flex: 1 1 280px;
+}
+
+.store-finder {
+  margin-top: 18px;
+}
+
+.shop-actions,
+.store-meta,
+.store-summary {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  align-items: center;
 }
 
 .shopping-list {
@@ -376,6 +432,162 @@ button:disabled {
 .compact-list li:last-child {
   border-bottom: 0;
   padding-bottom: 0;
+}
+
+.store-results {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.store-card {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 18px;
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(71, 48, 31, 0.1);
+  background: rgba(255, 250, 242, 0.75);
+}
+
+.store-card-rating {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(47, 107, 83, 0.08);
+}
+
+.store-stars,
+.review-stars {
+  color: var(--success);
+  letter-spacing: 0.08em;
+  font-size: 1.1rem;
+}
+
+.store-card-rating span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.store-card-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.store-card-body h4,
+.review-profile-card h3,
+.review-write-card h3,
+.review-list-card h3 {
+  margin: 0 0 6px;
+  font-family: "Fraunces", serif;
+  font-size: 1.2rem;
+}
+
+.store-card p {
+  margin: 0;
+}
+
+.store-detail {
+  margin-top: 24px;
+}
+
+.store-review-layout {
+  display: grid;
+  gap: 20px;
+}
+
+.review-profile-card,
+.review-write-card,
+.review-list-card {
+  padding: 22px;
+  border-radius: 24px;
+  border: 1px solid rgba(71, 48, 31, 0.1);
+  background: rgba(255, 250, 242, 0.78);
+}
+
+.review-profile-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+}
+
+.review-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.review-summary-stat {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(71, 48, 31, 0.05);
+}
+
+.review-summary-label {
+  display: block;
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+
+.review-summary-stat strong {
+  font-size: 1.2rem;
+}
+
+.store-review-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.review-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.review-form-actions button {
+  justify-self: start;
+}
+
+.review-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.user-review-card {
+  padding: 18px;
+  border-radius: 20px;
+  background: rgba(71, 48, 31, 0.05);
+}
+
+.user-review-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 12px;
+}
+
+.user-review-header strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.user-review-header p,
+.user-review-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .steps-list {
@@ -411,6 +623,7 @@ button:disabled {
   .preferences-panel,
   .recipes-panel,
   .planner-panel,
+  .stores-panel,
   .favorites-panel {
     grid-column: auto;
   }
@@ -435,11 +648,48 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .store-card,
+  .review-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .store-card-body,
+  .review-profile-header,
+  .user-review-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .pagination {
+    justify-content: stretch;
+    flex-wrap: wrap;
+  }
+
+  .pagination-button {
+    flex: 1 1 140px;
+  }
+
   .split-heading,
   .pantry-form,
   .manual-item-form,
   .swap-controls {
     grid-template-columns: 1fr;
     align-items: flex-start;
+  }
+
+  .shop-actions {
+    width: 100%;
+  }
+
+  .shop-actions button {
+    flex: 1 1 0;
+  }
+
+  .subsection {
+    margin-top: 24px;
+  }
+
+  .subsection-header .inline-note {
+    max-width: none;
   }
 }
