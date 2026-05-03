@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PantryPilot</title>
+    <title>MyChef</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -16,25 +16,19 @@
     <div class="page-shell">
       <header class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Node.js Frontend Demo</p>
-          <h1>Plan local, diet-aware meals without rebuilding your week by hand.</h1>
+          <p class="eyebrow">MyChef</p>
+          <h1>Student meal planning connected to a real backend.</h1>
           <p class="hero-text">
-            PantryPilot helps users create an account, save diet preferences,
-            browse daily recipes, build weekly shopping lists, favorite meals,
-            and share recipes with friends.
+            This app now uses a backend API for accounts, recipes, pantry items,
+            meal plans, favorites, manual shopping items, and shopping-list generation.
           </p>
-          <div class="hero-pills">
-            <span>Preference-aware</span>
-            <span>Store-specific</span>
-            <span>Weekly planning</span>
-          </div>
         </div>
         <div class="hero-card">
-          <h2>Weekly Snapshot</h2>
+          <h2>Session Snapshot</h2>
           <div class="summary-grid">
             <div>
-              <span class="summary-label">Recipes Today</span>
-              <strong id="dailyCount">0</strong>
+              <span class="summary-label">Recipes Loaded</span>
+              <strong id="recipeCount">0</strong>
             </div>
             <div>
               <span class="summary-label">Favorites Saved</span>
@@ -45,118 +39,131 @@
               <strong id="shoppingCount">0</strong>
             </div>
             <div>
-              <span class="summary-label">Store Match</span>
-              <strong id="storeName">Select a city</strong>
+              <span class="summary-label">Meal Plans</span>
+              <strong id="planCount">0</strong>
             </div>
           </div>
         </div>
       </header>
 
+      <div id="statusBanner" class="banner banner-success" hidden></div>
+      <div id="errorBanner" class="banner banner-error" hidden></div>
+
       <main class="dashboard">
         <section class="panel account-panel">
           <div class="section-heading">
             <p class="eyebrow">1. Account</p>
-            <h2>Create your profile</h2>
+            <h2>Register or log in</h2>
           </div>
-          <form id="accountForm" class="stack">
-            <label>
-              Name
-              <input type="text" id="name" placeholder="Jordan Lee" required />
-            </label>
-            <label>
-              Email
-              <input type="email" id="email" placeholder="jordan@example.com" required />
-            </label>
-            <button type="submit">Save account</button>
-          </form>
-          <div id="accountSummary" class="inline-note"></div>
+          <div id="accountPanelBody"></div>
         </section>
 
         <section class="panel preferences-panel">
           <div class="section-heading">
-            <p class="eyebrow">2. Preferences</p>
-            <h2>Set dietary needs</h2>
+            <p class="eyebrow">2. Preferences + Pantry</p>
+            <h2>Save diet settings</h2>
           </div>
-          <div id="preferences" class="chip-grid"></div>
-          <label class="location-field">
-            Choose your grocery location
-            <select id="locationSelect"></select>
-          </label>
-          <p class="inline-note" id="locationSummary"></p>
+          <div id="preferencesPanelBody">
+            <p class="panel-message" hidden></p>
+            <p class="inline-note auth-required-note">Login is required before saving preferences and pantry items.</p>
+            <div id="preferences" class="chip-grid"></div>
+            <label class="stacked-field">
+              Dietary restrictions
+              <textarea id="restrictionsInput" rows="3" placeholder="no nuts, no shellfish"></textarea>
+            </label>
+            <button id="savePreferencesButton" type="button">Save preferences</button>
+            <div class="subsection">
+              <div class="split-heading">
+                <h3>Pantry</h3>
+                <span class="inline-note">Pantry items remove duplicates from shopping suggestions.</span>
+              </div>
+              <form id="pantryForm" class="pantry-form">
+                <input type="text" id="pantryInput" placeholder="Add ingredient" />
+                <button type="submit">Add item</button>
+              </form>
+              <p class="panel-message pantry-message" hidden></p>
+              <div id="pantryEmpty" class="empty-state">No pantry items saved yet.</div>
+              <ul id="pantryList" class="compact-list"></ul>
+            </div>
+          </div>
         </section>
 
         <section class="panel recipes-panel">
           <div class="section-heading split-heading">
             <div>
-              <p class="eyebrow">3. Daily Recipes</p>
-              <h2>Browse meals that fit your week</h2>
+              <p class="eyebrow">3. Recipes</p>
+              <h2>Browse backend recipes</h2>
             </div>
-            <button id="refreshRecipes" class="secondary-button" type="button">
-              Refresh picks
-            </button>
+            <div class="toolbar">
+              <select id="recipeFilter" aria-label="Recipe tag filter">
+                <option value="">All tags</option>
+              </select>
+              <button id="refreshRecipes" type="button" class="secondary-button">Reload</button>
+            </div>
           </div>
           <div id="recipeGrid" class="recipe-grid"></div>
+          <div id="recipeDetail" class="recipe-detail"></div>
         </section>
 
         <section class="panel planner-panel">
           <div class="section-heading">
-            <p class="eyebrow">4. Weekly Planner</p>
-            <h2>Curate a shopping list</h2>
+            <p class="eyebrow">4. Meal Planning</p>
+            <h2>Generate, swap, and shop</h2>
           </div>
+          <div class="planner-controls">
+            <button id="generatePlanButton" type="button">Generate 7-day plan</button>
+            <button id="reloadPlansButton" type="button" class="secondary-button">Reload plans</button>
+          </div>
+          <label id="planPickerWrap" class="stacked-field" hidden>
+            Choose saved plan
+            <select id="planPicker"></select>
+          </label>
           <div id="weeklyMeals" class="weekly-meals"></div>
-          <div class="shopping-list">
-            <div class="split-heading">
-              <h3>Shopping list</h3>
-              <button id="clearWeek" class="secondary-button" type="button">
-                Clear week
-              </button>
+          <div class="shopping-grid">
+            <div class="shopping-list">
+              <div class="split-heading">
+                <h3>Manual shopping items</h3>
+                <span class="inline-note">Saved through the backend.</span>
+              </div>
+              <form id="manualShoppingForm" class="manual-item-form">
+                <label>
+                  Item
+                  <input id="manualItemName" type="text" placeholder="Chicken breast" required />
+                </label>
+                <label>
+                  Qty
+                  <input id="manualItemQuantity" type="number" min="0.25" step="0.25" value="1" required />
+                </label>
+                <label>
+                  Unit
+                  <input id="manualItemUnit" type="text" placeholder="lb, cup, oz" />
+                </label>
+                <button type="submit">Add item</button>
+              </form>
+              <ul id="manualShoppingList"></ul>
             </div>
-            <form id="manualShoppingForm" class="manual-item-form">
-              <label>
-                Item
-                <input id="manualItemName" type="text" placeholder="Chicken breast" required />
-              </label>
-              <label>
-                Qty
-                <input id="manualItemQuantity" type="number" min="0.25" step="0.25" value="1" required />
-              </label>
-              <label>
-                Unit
-                <input id="manualItemUnit" type="text" placeholder="lb, cup, oz" />
-              </label>
-              <button type="submit">Add item</button>
-            </form>
-            <ul id="shoppingList"></ul>
+            <div class="shopping-list">
+              <h3>Shopping list</h3>
+              <ul id="shoppingList"></ul>
+            </div>
+            <div class="shopping-list">
+              <h3>Already have</h3>
+              <ul id="alreadyHaveList"></ul>
+            </div>
           </div>
         </section>
 
         <section class="panel favorites-panel">
           <div class="section-heading">
             <p class="eyebrow">5. Favorites</p>
-            <h2>Keep meals for future weeks</h2>
+            <h2>Keep meals for later</h2>
           </div>
           <div id="favoriteMeals" class="favorites-list"></div>
         </section>
       </main>
     </div>
 
-    <template id="recipeCardTemplate">
-      <article class="recipe-card">
-        <div class="recipe-topline">
-          <span class="recipe-store"></span>
-          <span class="recipe-tags"></span>
-        </div>
-        <h3></h3>
-        <p class="recipe-description"></p>
-        <div class="recipe-meta"></div>
-        <div class="recipe-actions">
-          <button class="plan-button" type="button">Add to week</button>
-          <button class="favorite-button" type="button">Favorite</button>
-          <button class="share-button" type="button">Share</button>
-        </div>
-      </article>
-    </template>
-
-    <script src="/app.js"></script>
+    <script src="/app-config.js"></script>
+    <script type="module" src="/app.js"></script>
   </body>
 </html>
