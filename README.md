@@ -1,4 +1,4 @@
-# MyChef 🍳
+# MyChef
 ### Personalized Meal Planning for College Students
 
 MyChef is a weekly meal planning web app built for college students cooking independently. Most students rely on takeout due to low cooking confidence, and existing apps don't teach real skills. MyChef combines meal planning, pantry tracking, smart shopping lists, and embedded cooking technique tips so students can learn while they cook.
