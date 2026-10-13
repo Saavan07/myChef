@@ -31,6 +31,6 @@ The image shows the existing course UI running with a disposable account. It is 
 
 ## Source hygiene
 
-The example configuration no longer contains the Google Maps key. The key also exists in original Git history; a cleaned publication must handle that history, and the key owner should revoke or rotate it. Removing text does not revoke a credential.
+The example configuration no longer contains the Google Maps key. The public copy removes it throughout the copied history; the key still exists in the original repository, and its owner should revoke or rotate it. Removing text does not revoke a credential.
 
-Tracked `frontend/node_modules` were removed from the prepared index; dependencies are restored from lockfiles. The original team repository and Saavan's original checkout remain intact.
+Tracked `frontend/node_modules` were removed from the current tree; dependencies are restored from lockfiles. The original team repository and Saavan's original checkout remain intact.

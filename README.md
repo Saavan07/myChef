@@ -96,3 +96,5 @@ This was collaborative work across the team. Saavan's recorded changes include f
 Git commits are evidence of recorded changes, not a complete measure of design, debugging, or pair work. Individual and shared responsibilities will be refined with the contributors instead of assigning exclusive ownership from commit counts.
 
 See `docs/project-baseline.md` for the boundary between the team application and later development. No new blanket license is assigned by this documentation update; preserve existing contributor and third-party notices.
+
+See [publication history and original commit mapping](docs/publication-history.md) for the cleaned-copy provenance.
