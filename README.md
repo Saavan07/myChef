@@ -1,118 +1,98 @@
-# MyChef
-### Personalized Meal Planning for College Students
+# myChef
 
-MyChef is a weekly meal planning web app built for college students cooking independently. Most students rely on takeout due to low cooking confidence, and existing apps don't teach real skills. MyChef combines meal planning, pantry tracking, smart shopping lists, and embedded cooking technique tips so students can learn while they cook.
+A team-built meal-planning web application for students cooking for themselves. Plan a week from stored recipes, use pantry ingredients, and turn the plan into an aggregated shopping list.
 
----
+This is the Spring 2026 CS 222 application built by Saavan Kiran, Ayush Chandra, Sam Tewari, and Tanish Mittal at the University of Illinois Urbana-Champaign. It is a course prototype. The original team repository and commit history remain the baseline for subsequent work.
 
-## Features
+## Implemented scope
 
-- 7-day personalized meal plan generation
-- Recipe filtering by dietary tags (vegan, gluten-free, etc.)
-- Pantry tracking to avoid redundant shopping
-- Smart shopping list generation with ingredient normalization and aggregation
-- Favorites system with bonus scoring in meal plan generation
-- Manual and automatic meal swapping
-- Nearby grocery store search via Google Places API
-- Store reviews from a nutritionist perspective
-- Step-by-step recipes with embedded cooking tips
+| Flow | Implementation |
+| --- | --- |
+| Accounts and preferences | Registration, login, dietary preferences and restrictions stored in MySQL |
+| Pantry and favorites | Add/remove pantry items and save favorite recipes |
+| Recipes | Browse stored recipes with ingredients, steps, preparation times, and cooking tips |
+| Meal planning | Generate seven days of meals and swap selections using recipe tags, favorites, pantry overlap, and repetition penalties |
+| Shopping | Aggregate ingredient quantities, normalize names/units, separate pantry matches, and add manual items |
+| Grocery search | Google Places lookup by location, plus stored reviews |
 
----
+The planner selects existing recipes. It does not generate recipes with an AI model. Grocery search does not provide live store inventory or price comparison. Friends, meal sharing, voice cooking assistance, and native mobile apps are future directions.
 
-## Technical Architecture
+## Architecture
 
-```
-Frontend (Vanilla JS, port 3000)
-        |
-        v
-  API Gateway (Express/Node.js, port 4000)
-        |
-   +---------+-----------------+-----------------+
-   v         v                 v                 v
-Account   Meal Storage    Meal Plan          Grocery Store
-Service   (MySQL)         Generation         Locator
-(MySQL)                   (Node.js)          (Google Places API)
+```text
+Browser: HTML, CSS, vanilla JavaScript
+  -> frontend/server.js: Express static server, port 3000
+  -> frontend/public/api.js: browser API client
+  -> backend/server.js: Express API, port 4000
+     -> MySQL: users, recipes, grocery stores, reviews
+     -> Google Places: optional nearby grocery lookup
 ```
 
-**Frontend** is a single-page app built with vanilla JavaScript served by an Express static server. A central state object controls the entire UI. Optimizations include recipe detail caching via `Map`, pagination, and `localStorage` session persistence.
+The active application uses Node.js. `main.py` preserves an earlier Python backend iteration and is not launched by the current setup. The browser keeps the selected user in local storage; this is not secure session authentication.
 
-**Backend** is a Node.js/Express API server that handles meal plan generation, ingredient parsing and normalization, shopping list aggregation, store search, reviews, and user data management.
+## Run locally
 
-**Database** uses MySQL with JSON fields for flexible data (preferences, pantry, favorites, plans) alongside a structured relational schema for users, recipes, grocery stores, and reviews.
+Use Node.js 24 and MySQL 8.4 for the verification environment. Use a disposable local database and test account credentials.
 
-**Google Places API** converts user location input to coordinates, queries nearby grocery stores, and computes distances.
+1. From a checkout of this repository, install both sets of locked dependencies:
 
-**Meal Plan Algorithm** filters recipes by dietary restrictions and preferences, then scores candidates using favorites (+30), pantry overlap (+10 per ingredient), recency penalties, and random variation. Weighted random selection produces non-repetitive weekly plans.
+   ```bash
+   npm ci
+   npm --prefix frontend ci
+   ```
 
-**Shopping List Engine** parses ingredient strings, normalizes names and units, aggregates quantities, and compares against the pantry. Output is split into "need to buy" and "already have."
+2. Create a database and database user using your local MySQL installation. Grant that user access to the new database. Import the schema, replacing `mychef` and the username with your choices:
 
----
+   ```bash
+   mysql -u your_mysql_user -p mychef < backend/schema.sql
+   ```
 
-## Installation
+3. Copy the example configuration and enter your local database settings:
 
-### Prerequisites
+   ```bash
+   cp backend/.env.example backend/.env
+   ```
 
-- [Node.js](https://nodejs.org/) v18 or higher
-- [MySQL](https://dev.mysql.com/downloads/) v8 or higher
-- A [Google Places API key](https://developers.google.com/maps/documentation/places/web-service/get-api-key)
+   `backend/env.js` reads **backend/.env**. `GOOGLE_MAPS_API_KEY` is optional for the core planning flow and required for external grocery lookup. Supply your own restricted key; keep it out of Git.
 
-### Steps
+4. Start the API from the repository root:
 
-**1. Clone the repository**
-```bash
-git clone https://github.com/<your-org>/mychef.git
-cd mychef
-```
+   ```bash
+   npm start
+   ```
 
-**2. Install dependencies**
-```bash
-npm install
-```
+   Startup checks the database, creates grocery/review tables if needed, and seeds recipes when the recipes table is empty. `backend/seedRecipes.js` exports seed data; it is not a standalone database initializer.
 
-**3. Configure environment variables**
+5. In a second terminal, start the frontend:
 
-Create a `.env` file in the project root:
-```env
-DB_HOST=localhost
-DB_USER=your_mysql_user
-DB_PASSWORD=your_mysql_password
-DB_NAME=mychef
-DB_PORT=3306
-GOOGLE_PLACES_API_KEY=your_google_places_api_key
-API_HOST=127.0.0.1
-API_PORT=4000
-BACKEND_URL=http://127.0.0.1:4000
-```
+   ```bash
+   npm --prefix frontend start
+   ```
 
-**4. Set up the database**
-```bash
-mysql -u your_mysql_user -p < schema.sql
-```
+6. Open http://127.0.0.1:3000. The API health endpoint is http://127.0.0.1:4000/health.
 
-**5. Seed recipes (optional)**
-```bash
-node seedRecipes.js
-```
+If you change the API address, set `BACKEND_URL` in the frontend terminal. The frontend server does not load `backend/.env`. Its generated `/app-config.js` tells the browser where to reach the API.
 
-**6. Start the backend**
-```bash
-node app.js
-```
+## Local smoke check
 
-**7. Start the frontend**
-```bash
-node server.js
-```
+With the API running against a disposable local database, run `node scripts/smoke-local.mjs`. It creates test records and verifies the core API flow. Do not run it against a database you need to keep clean.
 
-The app will be available at `http://127.0.0.1:3000`.
+## Demonstration flow
 
----
+Register a disposable account, save preferences, add garlic to the pantry, favorite a recipe, generate a week, swap one meal, and add a manual shopping item. Compare the shopping list with the pantry. Grocery search needs a separately configured Google API key.
 
-## Team
+## Limitations
 
-| Name | Role |
-|------|------|
-| **Ayush** | Frontend: UI components, state management |
-| **Saavan** | Frontend: UI components, CSS design system |
-| **Tanish** | Backend: meal plan generation, shopping list engine |
-| **Sam** | Backend: store search, reviews, user data management |
+- Passwords are stored and compared as plaintext in the inherited prototype. User-ID routes do not enforce authenticated ownership. Do not deploy this version for real users or reuse a real password.
+- Dietary filtering relies on recipe tags and simple ingredient matching, includes known incorrect seed tags, and can fall back to unrestricted recipes. It cannot establish allergy safety or account for cross-contamination.
+- Pantry matches indicate ingredient presence, not whether enough quantity remains. Unit aggregation is limited and does not perform general unit conversion.
+- Recipe variety is constrained by the seed catalog. Nutrition, ingredient amounts, and cooking directions need review before product release.
+- The frontend and API use separate dependency versions. Setup and dependency findings are recorded in `docs/verification.md`.
+
+## Contributions and provenance
+
+This was collaborative work across the team. Saavan's recorded changes include frontend prototype work and commit `1cf2c63`, which repaired shopping-list ingredient matching, quantities, manual items, and their presentation across the frontend and earlier Python backend. The final Node.js/MySQL integration incorporates work from the other team members.
+
+Git commits are evidence of recorded changes, not a complete measure of design, debugging, or pair work. Individual and shared responsibilities will be refined with the contributors instead of assigning exclusive ownership from commit counts.
+
+See `docs/project-baseline.md` for the boundary between the team application and later development. No new blanket license is assigned by this documentation update; preserve existing contributor and third-party notices.

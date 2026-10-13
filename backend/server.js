@@ -445,7 +445,7 @@ async function ensureReviewsTable() {
     `CREATE TABLE IF NOT EXISTS reviews (
       review_id CHAR(36) COLLATE utf8mb4_unicode_ci NOT NULL,
       user_id CHAR(36) COLLATE utf8mb4_unicode_ci NOT NULL,
-      facility_id VARCHAR(32) COLLATE utf8mb4_0900_ai_ci NOT NULL,
+      facility_id VARCHAR(32) COLLATE utf8mb4_unicode_ci NOT NULL,
       rating INT NOT NULL,
       comment TEXT NOT NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
