@@ -1,6 +1,7 @@
 import { api } from "/api.js";
 import { openCooking, closeCooking } from "/cooking.js";
 import { openPurchases, closePurchases } from "/purchases.js";
+import { createAssistant } from "/assistant.js";
 
 const storageKey = "mychef-session";
 const weekDays = [
@@ -117,6 +118,19 @@ const elements = {
   alreadyHaveList: document.querySelector("#alreadyHaveList"),
   favoriteMeals: document.querySelector("#favoriteMeals"),
 };
+
+const assistant = createAssistant({
+  getContext: () => ({
+    userId: state.userId,
+    plan: getActivePlan(),
+    loading: state.panelLoading.mealPlans,
+    preferences: state.preferences,
+    restrictions: state.restrictions,
+  }),
+  onUpdated: async (userId) => {
+    if (state.userId === userId) await refreshMealPlans();
+  },
+});
 
 function loadStoredSession() {
   try {
@@ -1392,6 +1406,7 @@ async function changePlan(plan, payload, action = "update") {
   }
 }
 function renderPlanner() {
+  assistant.render();
   const activePlan = getActivePlan();
   elements.planPickerWrap.hidden = state.mealPlans.length === 0;
   elements.planPicker.innerHTML = "";

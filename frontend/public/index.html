@@ -231,6 +231,61 @@
           </label>
           <div id="savedPlanTools" class="saved-plan-tools"></div>
           <div id="weeklyMeals" class="weekly-meals"></div>
+          <section class="assistant-panel" aria-labelledby="assistantTitle">
+            <p class="eyebrow">A little help with dinner</p>
+            <h3 id="assistantTitle">What would you like to swap?</h3>
+            <p class="inline-note">
+              Tell me the day and what you're in the mood for. I'll choose from
+              our recipes, keep your saved dietary settings, and update your
+              shopping list.
+            </p>
+            <p class="assistant-example">
+              Try: "Swap Wednesday for something quicker" or "Replace Monday's
+              dinner with something using spinach."
+            </p>
+            <p id="assistantStatus" class="inline-note" role="status"></p>
+            <div
+              id="assistantLog"
+              class="assistant-log"
+              role="log"
+              aria-label="Meal assistant conversation"
+              aria-live="polite"
+            ></div>
+            <form id="assistantForm">
+              <label for="assistantMessage">Your meal-swap request</label>
+              <textarea
+                id="assistantMessage"
+                rows="3"
+                maxlength="800"
+                required
+                placeholder="Swap Wednesday's dinner for something under 20 minutes."
+                aria-describedby="assistantStatus assistantPrivacy"
+              ></textarea>
+              <div class="assistant-actions">
+                <button id="assistantSend" type="submit">Update my plan</button>
+                <button
+                  id="assistantReset"
+                  type="button"
+                  class="secondary-button"
+                >
+                  New request
+                </button>
+                <button
+                  id="assistantReconnect"
+                  type="button"
+                  class="secondary-button"
+                  hidden
+                >
+                  Check connection
+                </button>
+              </div>
+            </form>
+            <p id="assistantPrivacy" class="inline-note">
+              Your request, active plan, pantry and dietary settings are sent to
+              OpenAI to find a swap. Kept and finished dinners stay in place. A
+              cooking-day swap also updates its reserved leftovers.
+            </p>
+          </section>
           <div id="shopping" class="shopping-heading">
             <h3>Shop for this plan</h3>
             <p class="inline-note">

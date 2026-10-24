@@ -54,6 +54,15 @@ function buildQuery(params) {
 }
 
 export const api = {
+  assistantStatus(userId) {
+    return request(`/users/${userId}/assistant`);
+  },
+  askAssistant(userId, planId, payload) {
+    return request(`/users/${userId}/meal-plans/${planId}/assistant`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
   session() {
     return request("/session");
   },

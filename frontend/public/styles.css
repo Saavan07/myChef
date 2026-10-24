@@ -11,6 +11,61 @@
   --shadow: 0 18px 60px rgba(68, 40, 21, 0.13);
 }
 
+.assistant-panel {
+  margin: 24px 0;
+  padding: 22px;
+  border: 1px solid rgba(47, 107, 83, 0.25);
+  border-radius: 20px;
+  background: #f0f4eb;
+}
+.assistant-panel h3 {
+  font-size: 1.5rem;
+}
+.assistant-example {
+  color: var(--success);
+  line-height: 1.6;
+}
+.assistant-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.assistant-panel textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 100px;
+  margin-top: 8px;
+}
+.assistant-log {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+  max-height: 28rem;
+  overflow-y: auto;
+}
+.assistant-message {
+  background: #fffdf7;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  overflow-wrap: anywhere;
+}
+.assistant-message p {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+.assistant-user {
+  background: #e5ecdf;
+}
+.assistant-success {
+  border-color: var(--success);
+}
+.assistant-error {
+  color: var(--danger);
+}
+
 * {
   box-sizing: border-box;
 }

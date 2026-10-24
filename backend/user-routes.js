@@ -72,7 +72,7 @@ async function mutate(id, changedFields, operation) {
     db.release();
   }
 }
-function installUserRoutes(app) {
+function installUserRoutes(app, { assistant } = {}) {
   app.post("/register", auth.limitAuthentication, async (req, res) => {
     const username = d.text(req.body?.username, "Username", 40);
     if (!/^[A-Za-z0-9_-]{3,40}$/.test(username))
@@ -542,6 +542,11 @@ function installUserRoutes(app) {
           return { ...result, progress };
         }),
       ),
+  );
+  require("./assistant-routes").installAssistantRoutes(
+    app,
+    { readUser, recipes, mutate },
+    assistant,
   );
 }
 function cooking(plan, entryId, all, user) {

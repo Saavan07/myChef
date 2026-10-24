@@ -56,6 +56,18 @@ Follow-up verification: 20 domain tests, the original 83 API checks plus 50 kitc
 
 No new database schema is required for this increment. Records are stored with each user's existing plans and written in the same transaction as pantry changes. Existing plans default to no purchase receipts or finished dinners.
 
+## Follow-up: AI meal swaps
+
+The assistant accepts a request for one cooking day in the active plan. The OpenAI Responses adapter asks for a strict structured intent: target date, optional named recipe, time limit, faster-than-current requirement, ingredients to include or avoid, and additional diet requirements. The server combines those conditions with saved restrictions and the plan's time limit. It uses the existing recipe selector and swap implementation; model output cannot write SQL, change dietary settings, invent recipes or calculate shopping amounts.
+
+The network call occurs before taking a database row lock. Before saving, the server reloads the account and checks the plan version plus a fingerprint of dietary settings, pantry, favorites and catalog. A stale response cannot overwrite intervening changes. Protected cooking days and their completed leftovers are rejected. Successful swaps update the linked leftover recipe, invalidate old cooking progress, clear shopping checkmarks and recalculate the list through the existing quantity rules. Other conflicting dinners keep the shopping list withheld.
+
+Each request has an operation ID. The last 50 receipts and request hashes are stored with the plan in the same transaction as the swap. Retrying a processed request returns its receipt without another AI call or swap; changing the payload under the same ID is rejected. An older request whose receipt has expired still cannot reapply a successful swap because its plan version is stale. One request per account may run at a time, with eight new requests per minute per application process and a 25-second provider timeout. Public deployment still needs shared rate limits and account-level usage controls.
+
+The UI supports brief clarification exchanges, preserves failed requests for retry, and clears conversations on plan/account changes. It renders all conversation text as text, never HTML. The key is server-only. No raw user prompts are persisted in the database, although clarification questions and swap summaries are included in receipts. The provider receives only the active context documented in the README, with `store: false`.
+
+Local verification: all 31 domain/provider tests passed. The assistant adds 28 real-MySQL API checks for authorization, unavailable connections, swaps, exact shopping amounts, retry receipts, rejected dietary conflicts, clarification, changed settings during interpretation, and concurrent duplicate requests. Dedicated browser workflows at 1440px and 390px cover disabled connection state, a clarification and follow-up, plan/list/leftover updates, a response lost after commit followed by a safe retry, dietary rejection, and private conversation clearing on logout. Tests inject provider responses and exercise the real application transaction code. No live OpenAI request or natural-language quality evaluation has been run; live activation requires a server API key.
+
 ## Next practical validation
 
 Cook several of the dinners, measure prep time and serving yield, and compare the shopping list with actual purchases. Those observations should guide catalog corrections and the next product changes.

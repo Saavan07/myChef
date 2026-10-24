@@ -608,7 +608,7 @@ app.use((error, _req, res, _next) => {
     .status(status)
     .json({
       detail:
-        status >= 500
+        status >= 500 && error.name !== "InputError"
           ? "Unable to save or load your data. Please try again."
           : error.message,
     });
