@@ -1,14 +1,19 @@
 const config = window.__APP_CONFIG__ || {};
 
-const API_BASE_URL = (config.backendUrl || "http://127.0.0.1:4000").replace(/\/$/, "");
+const API_BASE_URL = (config.backendUrl || window.location.origin).replace(
+  /\/$/,
+  "",
+);
 
 async function request(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...(options.headers || {})
+      "X-MyChef-Request": "1",
+      ...(options.headers || {}),
     },
-    ...options
+    ...options,
   });
 
   if (!response.ok) {
@@ -21,7 +26,11 @@ async function request(path, options = {}) {
       detail = response.statusText || detail;
     }
 
-    throw new Error(detail);
+    const error = new Error(detail);
+    error.status = response.status;
+    if (response.status === 401 && path.startsWith("/users/"))
+      window.dispatchEvent(new Event("mychef:expired"));
+    throw error;
   }
 
   if (response.status === 204) {
@@ -45,16 +54,54 @@ function buildQuery(params) {
 }
 
 export const api = {
+  session() {
+    return request("/session");
+  },
+  logout() {
+    return request("/logout", { method: "POST" });
+  },
+  dietaryOptions() {
+    return request("/dietary-options");
+  },
+  updatePlan(userId, planId, payload) {
+    return request(`/users/${userId}/meal-plans/${planId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+  deletePlan(userId, planId) {
+    return request(`/users/${userId}/meal-plans/${planId}`, {
+      method: "DELETE",
+    });
+  },
+  candidates(userId, planId) {
+    return request(`/users/${userId}/meal-plans/${planId}/candidates`);
+  },
+  checkShopping(userId, planId, payload) {
+    return request(`/users/${userId}/meal-plans/${planId}/shopping-list`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+  cooking(userId, planId, entryId) {
+    return request(`/users/${userId}/meal-plans/${planId}/cooking/${entryId}`);
+  },
+  saveCooking(userId, planId, entryId, payload) {
+    return request(`/users/${userId}/meal-plans/${planId}/cooking/${entryId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
   register(payload) {
     return request("/register", {
       method: "POST",
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
   },
   login(payload) {
     return request("/login", {
       method: "POST",
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
   },
   getPreferences(userId) {
@@ -63,7 +110,7 @@ export const api = {
   updatePreferences(userId, payload) {
     return request(`/users/${userId}/preferences`, {
       method: "POST",
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
   },
   getPantry(userId) {
@@ -72,12 +119,12 @@ export const api = {
   updatePantry(userId, payload) {
     return request(`/users/${userId}/pantry`, {
       method: "POST",
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
   },
   removePantryItem(userId, item) {
     return request(`/users/${userId}/pantry/${encodeURIComponent(item)}`, {
-      method: "DELETE"
+      method: "DELETE",
     });
   },
   getRecipes(tag) {
@@ -91,12 +138,12 @@ export const api = {
   },
   addFavorite(userId, recipeId) {
     return request(`/users/${userId}/favorites/${recipeId}`, {
-      method: "POST"
+      method: "POST",
     });
   },
   removeFavorite(userId, recipeId) {
     return request(`/users/${userId}/favorites/${recipeId}`, {
-      method: "DELETE"
+      method: "DELETE",
     });
   },
   getManualShoppingItems(userId) {
@@ -105,17 +152,18 @@ export const api = {
   addManualShoppingItem(userId, payload) {
     return request(`/users/${userId}/shopping-list/manual`, {
       method: "POST",
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
   },
   removeManualShoppingItem(userId, itemId) {
     return request(`/users/${userId}/shopping-list/manual/${itemId}`, {
-      method: "DELETE"
+      method: "DELETE",
     });
   },
-  generateMealPlan(userId) {
+  generateMealPlan(userId, payload) {
     return request(`/users/${userId}/meal-plan/generate`, {
-      method: "POST"
+      method: "POST",
+      body: JSON.stringify(payload),
     });
   },
   getMealPlans(userId) {
@@ -124,12 +172,13 @@ export const api = {
   swapMeal(userId, planId, payload) {
     return request(`/users/${userId}/meal-plans/${planId}/swap`, {
       method: "POST",
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
   },
-  swapMealAuto(userId, planId, dayIndex) {
-    return request(`/users/${userId}/meal-plans/${planId}/swap-auto${buildQuery({ day_index: dayIndex })}`, {
-      method: "POST"
+  swapMealAuto(userId, planId, payload) {
+    return request(`/users/${userId}/meal-plans/${planId}/swap-auto`, {
+      method: "POST",
+      body: JSON.stringify(payload),
     });
   },
   getShoppingList(userId, planId) {
@@ -138,7 +187,7 @@ export const api = {
   findNearbyStores(payload) {
     return request("/stores/nearby", {
       method: "POST",
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
   },
   getStoreReviews(storeId) {
@@ -147,12 +196,12 @@ export const api = {
   addStoreReview(storeId, payload) {
     return request(`/stores/${storeId}/reviews`, {
       method: "POST",
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
   },
   deleteStoreReview(storeId, userId) {
     return request(`/stores/${storeId}/reviews/${userId}`, {
-      method: "DELETE"
+      method: "DELETE",
     });
-  }
+  },
 };

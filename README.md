@@ -1,93 +1,74 @@
 # myChef
 
-A team-built meal-planning web application for students cooking for themselves. Plan a week from stored recipes, use pantry ingredients, and turn the plan into an aggregated shopping list.
+A meal-planning app for students cooking for themselves. Choose dinners for the week, use what is already in your pantry, shop for the missing amounts, and follow the recipes on your phone.
 
-This is the Spring 2026 CS 222 application built by Saavan Kiran, Ayush Chandra, Sam Tewari, and Tanish Mittal at the University of Illinois Urbana-Champaign. It is a course prototype. The original team repository and commit history remain the baseline for subsequent work.
+The foundation is the Spring 2026 CS 222 team project by Saavan Kiran, Ayush Chandra, Sam Tewari, and Tanish Mittal at the University of Illinois Urbana-Champaign. The October 2026 work extends that baseline in this personal repository. Original team history and source attribution remain preserved.
 
-## Implemented scope
+## The first cooking week
 
-| Flow | Implementation |
-| --- | --- |
-| Accounts and preferences | Registration, login, dietary preferences and restrictions stored in MySQL |
-| Pantry and favorites | Add/remove pantry items and save favorite recipes |
-| Recipes | Browse stored recipes with ingredients, steps, preparation times, and cooking tips |
-| Meal planning | Generate seven days of meals and swap selections using recipe tags, favorites, pantry overlap, and repetition penalties |
-| Shopping | Aggregate ingredient quantities, normalize names/units, separate pantry matches, and add manual items |
-| Grocery search | Google Places lookup by location, plus stored reviews |
+- Plan 1-7 consecutive dinners with a start date, number of people, and cooking-time limit.
+- Cook extra for the following night. Leftover portions are included in the original batch and counted once in the shopping list.
+- Keep selected dinners, replan the others, swap a meal, or change portions. Conflicting edits from another tab require a reload.
+- Save measured pantry amounts. Shopping subtracts available quantities across the entire selected plan, converts compatible units, and retains intentional extra purchases.
+- Check off purchases, then open a phone-friendly cooking view with scaled ingredients, saved steps, and a timer that resumes after reload.
+- Choose from 17 recipes, including 12 dinners. Dietary settings apply to generation and swaps. Conflicting older plans require changes before shopping or cooking.
+- Sign in with a server-verified session. Passwords are salted and hashed, session cookies are HttpOnly, and private routes check account ownership.
 
-The planner selects existing recipes. It does not generate recipes with an AI model. Grocery search does not provide live store inventory or price comparison. Friends, meal sharing, voice cooking assistance, and native mobile apps are future directions.
-
-## Architecture
-
-```text
-Browser: HTML, CSS, vanilla JavaScript
-  -> frontend/server.js: Express static server, port 3000
-  -> frontend/public/api.js: browser API client
-  -> backend/server.js: Express API, port 4000
-     -> MySQL: users, recipes, grocery stores, reviews
-     -> Google Places: optional nearby grocery lookup
-```
-
-The active application uses Node.js. `main.py` preserves an earlier Python backend iteration and is not launched by the current setup. The browser keeps the selected user in local storage; this is not secure session authentication.
+These features are verified locally with the real API and MySQL database. This is not a hosted public release or a claim of allergy safety. See [milestone verification](docs/cooking-week-verification.md).
 
 ## Run locally
 
-Use Node.js 24 and MySQL 8.4 for the verification environment. Use a disposable local database and test account credentials.
+Requires Node.js 22 or newer, npm, and Docker Compose. Node.js 24 and MySQL 8.4 were used for verification.
 
-1. From a checkout of this repository, install both sets of locked dependencies:
+```sh
+npm ci
+docker compose -f compose.local.yml up -d
+cp backend/.env.example backend/.env
+npm start
+```
 
-   ```bash
-   npm ci
-   npm --prefix frontend ci
-   ```
+Wait for the database to be ready before starting the app. Open **http://127.0.0.1:4000**. The same server serves the interface and API, so only one application process is needed. Create a local test account with a password of at least 12 characters.
 
-2. Create a database and database user using your local MySQL installation. Grant that user access to the new database. Import the schema, replacing `mychef` and the username with your choices:
+The supplied database credentials are disposable development values. The database and application bind to local loopback by default. The optional Google Places key can be left blank; dinner planning, shopping, and cooking do not require it.
 
-   ```bash
-   mysql -u your_mysql_user -p mychef < backend/schema.sql
-   ```
+To stop the database while retaining its contents:
 
-3. Copy the example configuration and enter your local database settings:
+```sh
+docker compose -f compose.local.yml stop
+```
 
-   ```bash
-   cp backend/.env.example backend/.env
-   ```
+An existing MySQL database can be configured through `backend/.env`. Back it up before upgrading. Startup creates missing tables, archives the previous bundled recipe rows, upgrades the catalog once, and hashes legacy plaintext passwords before serving requests. Existing user data is retained. Old unmeasured pantry entries need a quantity, and old seven-recipe plans remain listed but need to be replaced with a dinner plan to use the new calculations. Details are in [the migration notes](docs/cooking-week-verification.md#migration).
 
-   `backend/env.js` reads **backend/.env**. `GOOGLE_MAPS_API_KEY` is optional for the core planning flow and required for external grocery lookup. Supply your own restricted key; keep it out of Git.
+The optional standalone frontend still works with `npm --prefix frontend ci` followed by `npm --prefix frontend start`. It runs on port 3000 and uses the API on port 4000. Use the same hostname for both, and configure `BACKEND_URL` and `WEB_ORIGINS` if changing those addresses.
 
-4. Start the API from the repository root:
+## Checks
 
-   ```bash
-   npm start
-   ```
+```sh
+npm test
+node scripts/migration-check.cjs
+npm run test:integration
+npx playwright install chromium
+npm run test:browser
+```
 
-   Startup checks the database, creates grocery/review tables if needed, and seeds recipes when the recipes table is empty. `backend/seedRecipes.js` exports seed data; it is not a standalone database initializer.
+Run the migration check against the disposable Compose database before starting the API. The integration and browser checks require the application to be running. They create their own accounts and remove them afterward. They refuse nonlocal destinations and require the disposable `mychef_local` database. Browser checks cover 1440px desktop and 390px phone layouts and write screenshots to the ignored `test-results/` directory. To use an installed Chrome instead of downloading Chromium, set `MYCHEF_BROWSER_CHANNEL=chrome`.
 
-5. In a second terminal, start the frontend:
+The GitHub workflow runs the same checks with MySQL and Chromium.
 
-   ```bash
-   npm --prefix frontend start
-   ```
+## Boundaries of this version
 
-6. Open http://127.0.0.1:3000. The API health endpoint is http://127.0.0.1:4000/health.
+- Dietary filtering uses a reviewed catalog and recognized ingredient exclusions. Package ingredients, brand substitutions, and cross-contact must still be checked by the person cooking.
+- Pantry counts are a planning snapshot. Cooking and checking off purchases do not automatically consume or replenish stock. Update quantities before planning another week.
+- Volume conversions use US cooking measures. Mass and volume stay separate; cans, slices, and individual items do not convert to weight. Rice, pasta, oats, and lentils are measured dry. Bean weights are canned package net weights before draining.
+- Cooking times are estimates. Recipes have not yet been kitchen-tested across serving sizes. Timers show status when the app is open and resume after reload; they do not send background alarms.
+- Google Places is an optional nearby-store lookup. It does not provide inventory, prices, or nutrition data. AI assistance, voice, friends, and native apps remain future work.
+- Public hosting still needs HTTPS, production cookie/origin configuration, backups, account recovery, and an appropriate shared request limiter. The current sign-in limiter is for one application process.
 
-If you change the API address, set `BACKEND_URL` in the frontend terminal. The frontend server does not load `backend/.env`. Its generated `/app-config.js` tells the browser where to reach the API.
+## Architecture
 
-## Local smoke check
+The browser uses HTML, CSS, and JavaScript. Express serves the interface and API, with MySQL persistence. `backend/auth.js` handles sessions and password hashing; `backend/meal-domain.js` contains planning and quantity rules; `backend/user-routes.js` handles account-owned data with transactions; `backend/migrate.js` manages startup upgrades. The existing grocery integration remains in `backend/server.js`.
 
-With the API running against a disposable local database, run `node scripts/smoke-local.mjs`. It creates test records and verifies the core API flow. Do not run it against a database you need to keep clean.
-
-## Demonstration flow
-
-Register a disposable account, save preferences, add garlic to the pantry, favorite a recipe, generate a week, swap one meal, and add a manual shopping item. Compare the shopping list with the pantry. Grocery search needs a separately configured Google API key.
-
-## Limitations
-
-- Passwords are stored and compared as plaintext in the inherited prototype. User-ID routes do not enforce authenticated ownership. Do not deploy this version for real users or reuse a real password.
-- Dietary filtering relies on recipe tags and simple ingredient matching, includes known incorrect seed tags, and can fall back to unrestricted recipes. It cannot establish allergy safety or account for cross-contamination.
-- Pantry matches indicate ingredient presence, not whether enough quantity remains. Unit aggregation is limited and does not perform general unit conversion.
-- Recipe variety is constrained by the seed catalog. Nutrition, ingredient amounts, and cooking directions need review before product release.
-- The frontend and API use separate dependency versions. Setup and dependency findings are recorded in `docs/verification.md`.
+`main.py` is an earlier team backend retained for history and is not part of the active application.
 
 ## Contributions and provenance
 

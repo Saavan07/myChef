@@ -1,13 +1,22 @@
 import { api } from "/api.js";
+import { openCooking, closeCooking } from "/cooking.js";
 
 const storageKey = "mychef-session";
-const weekDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const weekDays = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
 const recipesPerPage = 4;
 const storesPerPage = 3;
 const defaultShopLocation = {
   latitude: 40.1106,
   longitude: -88.2284,
-  label: "UIUC campus default"
+  label: "UIUC campus default",
 };
 
 const state = {
@@ -30,6 +39,8 @@ const state = {
   favorites: [],
   manualShoppingItems: [],
   mealPlans: [],
+  planCandidates: [],
+  shoppingWarnings: [],
   activePlanId: null,
   shopLocation: null,
   nearbyStores: [],
@@ -47,7 +58,7 @@ const state = {
     shoppingList: false,
     manualShopping: false,
     stores: false,
-    storeReviews: false
+    storeReviews: false,
   },
   panelErrors: {
     recipes: "",
@@ -58,8 +69,8 @@ const state = {
     shoppingList: "",
     manualShopping: "",
     stores: "",
-    storeReviews: ""
-  }
+    storeReviews: "",
+  },
 };
 
 const elements = {
@@ -102,34 +113,32 @@ const elements = {
   manualShoppingList: document.querySelector("#manualShoppingList"),
   shoppingList: document.querySelector("#shoppingList"),
   alreadyHaveList: document.querySelector("#alreadyHaveList"),
-  favoriteMeals: document.querySelector("#favoriteMeals")
+  favoriteMeals: document.querySelector("#favoriteMeals"),
 };
 
 function loadStoredSession() {
   try {
-    const saved = JSON.parse(localStorage.getItem(storageKey));
-    if (saved?.userId) {
-      state.userId = saved.userId;
-      state.username = saved.username || "";
-      state.activePlanId = saved.activePlanId || null;
-    }
-  } catch (_error) {
+    state.activePlanId =
+      JSON.parse(localStorage.getItem(storageKey))?.activePlanId || null;
+  } catch {
     localStorage.removeItem(storageKey);
   }
 }
-
 function persistSession() {
   localStorage.setItem(
     storageKey,
-    JSON.stringify({
-      userId: state.userId,
-      username: state.username,
-      activePlanId: state.activePlanId
-    })
+    JSON.stringify({ activePlanId: state.activePlanId }),
   );
 }
-
+function formatIngredient(item, factor = 1) {
+  if (typeof item === "string") return item;
+  if (item.quantity == null) return `${item.name} (add a measured amount)`;
+  return `${Number((item.quantity * factor).toFixed(3))} ${item.unit === "count" ? "" : `${item.unit} `}${item.name}`;
+}
 function clearSession() {
+  closeCooking();
+  state.planCandidates = [];
+  state.shoppingWarnings = [];
   state.userId = null;
   state.username = "";
   state.preferences = [];
@@ -194,13 +203,13 @@ function escapeHtml(value) {
       "<": "&lt;",
       ">": "&gt;",
       '"': "&quot;",
-      "'": "&#39;"
+      "'": "&#39;",
     }[character];
   });
 }
 
 function getAllTags() {
-  return [...new Set(state.allRecipes.flatMap((recipe) => recipe.dietary_tags || []))].sort();
+  return ["vegetarian", "vegan", "gluten-free"];
 }
 
 function getRecipeById(recipeId) {
@@ -223,7 +232,11 @@ function getActivePlan() {
 }
 
 function formatDistance(distanceMiles) {
-  if (distanceMiles === null || distanceMiles === undefined || Number.isNaN(distanceMiles)) {
+  if (
+    distanceMiles === null ||
+    distanceMiles === undefined ||
+    Number.isNaN(distanceMiles)
+  ) {
     return "Distance unavailable";
   }
 
@@ -235,7 +248,11 @@ function formatDistance(distanceMiles) {
 }
 
 function getSelectedStore() {
-  return state.nearbyStores.find((store) => store.store_id === state.selectedStoreId) || null;
+  return (
+    state.nearbyStores.find(
+      (store) => store.store_id === state.selectedStoreId,
+    ) || null
+  );
 }
 
 function getStoreReviews(storeId) {
@@ -262,7 +279,9 @@ function formatStarRating(rating) {
 }
 
 function parseCoordinateQuery(value) {
-  const match = String(value).trim().match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+  const match = String(value)
+    .trim()
+    .match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
   if (!match) {
     return null;
   }
@@ -284,7 +303,9 @@ async function loadStoreReviews(storeId) {
     const response = await api.getStoreReviews(storeId);
     state.storeReviews[storeId] = response.reviews || [];
     state.nearbyStores = state.nearbyStores.map((store) => {
-      return store.store_id === storeId ? { ...store, ...response.store } : store;
+      return store.store_id === storeId
+        ? { ...store, ...response.store }
+        : store;
     });
   } catch (error) {
     setPanelError("storeReviews", error.message);
@@ -323,7 +344,19 @@ async function loadRecipes() {
   try {
     const allRecipes = await api.getRecipes();
     state.allRecipes = allRecipes;
-    state.recipes = state.recipeFilter ? await api.getRecipes(state.recipeFilter) : allRecipes;
+    const names = [
+      ...new Set(
+        allRecipes.flatMap((r) =>
+          r.ingredients.map((i) => i.name).filter(Boolean),
+        ),
+      ),
+    ].sort();
+    document.querySelector("#ingredientNames").innerHTML = names
+      .map((name) => `<option value="${escapeHtml(name)}"></option>`)
+      .join("");
+    state.recipes = state.recipeFilter
+      ? await api.getRecipes(state.recipeFilter)
+      : allRecipes;
     state.recipePage = 1;
 
     if (!state.selectedRecipeId || !getRecipeById(state.selectedRecipeId)) {
@@ -347,6 +380,8 @@ async function loadRecipes() {
 }
 
 async function refreshShoppingList() {
+  const requestedUser = state.userId;
+  const requestedPlan = state.activePlanId;
   if (!state.userId || !state.activePlanId) {
     state.shoppingListItems = [];
     state.alreadyHaveItems = [];
@@ -359,13 +394,22 @@ async function refreshShoppingList() {
   setPanelError("shoppingList", "");
 
   try {
-    const response = await api.getShoppingList(state.userId, state.activePlanId);
+    const [response, candidates] = await Promise.all([
+      api.getShoppingList(state.userId, state.activePlanId),
+      api.candidates(state.userId, state.activePlanId),
+    ]);
+    if (state.userId !== requestedUser || state.activePlanId !== requestedPlan)
+      return;
+    state.planCandidates = candidates;
+    state.shoppingWarnings = response.warnings || [];
     state.shoppingListItems = response.shopping_list_items || [];
     state.alreadyHaveItems = response.already_have_items || [];
   } catch (error) {
     setPanelError("shoppingList", error.message);
     state.shoppingListItems = [];
     state.alreadyHaveItems = [];
+    state.planCandidates = [];
+    state.shoppingWarnings = [];
   } finally {
     setPanelLoading("shoppingList", false);
     renderPlanner();
@@ -374,6 +418,7 @@ async function refreshShoppingList() {
 }
 
 async function refreshMealPlans() {
+  const requestedUser = state.userId;
   if (!state.userId) {
     return;
   }
@@ -382,8 +427,13 @@ async function refreshMealPlans() {
   setPanelError("mealPlans", "");
 
   try {
-    state.mealPlans = await api.getMealPlans(state.userId);
-    if (!state.activePlanId || !state.mealPlans.some((plan) => plan.id === state.activePlanId)) {
+    const plans = await api.getMealPlans(requestedUser);
+    if (state.userId !== requestedUser) return;
+    state.mealPlans = plans;
+    if (
+      !state.activePlanId ||
+      !state.mealPlans.some((plan) => plan.id === state.activePlanId)
+    ) {
       state.activePlanId = state.mealPlans.at(-1)?.id || null;
     }
     persistSession();
@@ -398,6 +448,7 @@ async function refreshMealPlans() {
 }
 
 async function loadUserData() {
+  const requestedUser = state.userId;
   if (!state.userId) {
     render();
     return;
@@ -408,14 +459,16 @@ async function loadUserData() {
   renderAccount();
 
   try {
-    const [preferences, pantry, favorites, manualItems, mealPlans] = await Promise.all([
-      api.getPreferences(state.userId),
-      api.getPantry(state.userId),
-      api.getFavorites(state.userId),
-      api.getManualShoppingItems(state.userId),
-      api.getMealPlans(state.userId)
-    ]);
+    const [preferences, pantry, favorites, manualItems, mealPlans] =
+      await Promise.all([
+        api.getPreferences(state.userId),
+        api.getPantry(state.userId),
+        api.getFavorites(state.userId),
+        api.getManualShoppingItems(state.userId),
+        api.getMealPlans(state.userId),
+      ]);
 
+    if (state.userId !== requestedUser) return;
     state.preferences = preferences.dietary_preferences || [];
     state.restrictions = preferences.dietary_restrictions || [];
     state.pantry = pantry.pantry || [];
@@ -423,7 +476,10 @@ async function loadUserData() {
     state.manualShoppingItems = manualItems.items || [];
     state.mealPlans = mealPlans || [];
 
-    if (!state.activePlanId || !state.mealPlans.some((plan) => plan.id === state.activePlanId)) {
+    if (
+      !state.activePlanId ||
+      !state.mealPlans.some((plan) => plan.id === state.activePlanId)
+    ) {
       state.activePlanId = state.mealPlans.at(-1)?.id || null;
     }
 
@@ -441,27 +497,41 @@ async function loadUserData() {
 
 function renderSummary() {
   elements.recipeCount.textContent = String(state.recipes.length);
-  elements.favoriteCount.textContent = String(state.favorites.length);
-  elements.shoppingCount.textContent = String(state.shoppingListItems.length);
-  elements.planCount.textContent = String(state.mealPlans.length);
+  elements.favoriteCount.textContent = String(
+    state.userId ? state.favorites.length : 0,
+  );
+  elements.shoppingCount.textContent = String(
+    state.userId ? state.shoppingListItems.length : 0,
+  );
+  elements.planCount.textContent = String(
+    state.userId ? state.mealPlans.length : 0,
+  );
 }
 
 function renderAccount() {
   if (state.userId) {
     elements.accountPanelBody.innerHTML = `
       <div class="account-summary">
-        <p class="inline-note">Signed in as <strong>${state.username}</strong>.</p>
-        <p class="inline-note">The frontend stores the backend-returned <code>user_id</code> locally because there is no token yet.</p>
+        <p class="inline-note">Signed in as <strong>${escapeHtml(state.username)}</strong>.</p>
+        <p class="inline-note">Your pantry, plans, and cooking progress are saved to your account.</p>
         <button id="logoutButton" type="button" class="secondary-button">Log out</button>
       </div>
     `;
 
-    elements.accountPanelBody.querySelector("#logoutButton").addEventListener("click", () => {
-      clearSession();
-      clearBanners();
-      setStatus("Logged out.");
-      render();
-    });
+    elements.accountPanelBody
+      .querySelector("#logoutButton")
+      .addEventListener("click", async () => {
+        try {
+          await api.logout();
+        } catch (error) {
+          setError(error.message);
+          return;
+        }
+        clearSession();
+        clearBanners();
+        setStatus("Logged out.");
+        render();
+      });
     return;
   }
 
@@ -473,61 +543,72 @@ function renderAccount() {
     <form id="authForm" class="stack">
       <label>
         Username
-        <input type="text" id="usernameInput" placeholder="student123" required />
+        <input type="text" id="usernameInput" placeholder="student123" autocomplete="username" maxlength="40" required />
       </label>
       <label>
         Password
-        <input type="password" id="passwordInput" placeholder="••••••••" required />
+        <input type="password" id="passwordInput" placeholder="At least 12 characters" autocomplete="${state.authMode === "register" ? "new-password" : "current-password"}" maxlength="128" ${state.authMode === "register" ? 'minlength="12"' : ""} required />
       </label>
       <button type="submit">${state.authLoading ? "Working..." : state.authMode === "login" ? "Login" : "Create account"}</button>
     </form>
     <div class="inline-note">
-      ${state.authMode === "register"
-        ? "Account creation writes a user record through the backend."
-        : "Login checks the backend user record and returns a user_id."}
+      ${
+        state.authMode === "register"
+          ? "Create an account to save your kitchen and dinner plans."
+          : "Welcome back. Pick up where you left off."
+      }
     </div>
   `;
 
-  elements.accountPanelBody.querySelectorAll("[data-mode]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.authMode = button.dataset.mode;
-      renderAccount();
+  elements.accountPanelBody
+    .querySelectorAll("[data-mode]")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        state.authMode = button.dataset.mode;
+        renderAccount();
+      });
     });
-  });
 
-  elements.accountPanelBody.querySelector("#authForm").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    clearBanners();
-    const username = elements.accountPanelBody.querySelector("#usernameInput").value.trim();
-    const password = elements.accountPanelBody.querySelector("#passwordInput").value.trim();
-    state.authLoading = true;
-    renderAccount();
-
-    try {
-      const response = state.authMode === "login"
-        ? await api.login({ username, password })
-        : await api.register({
-            username,
-            password,
-            dietary_preferences: [],
-            dietary_restrictions: []
-          });
-
-      state.userId = response.user_id;
-      state.username = username;
-      persistSession();
-      await loadUserData();
-    } catch (error) {
-      setError(error.message);
-    } finally {
-      state.authLoading = false;
+  elements.accountPanelBody
+    .querySelector("#authForm")
+    .addEventListener("submit", async (event) => {
+      event.preventDefault();
+      clearBanners();
+      const username = elements.accountPanelBody
+        .querySelector("#usernameInput")
+        .value.trim();
+      const password =
+        elements.accountPanelBody.querySelector("#passwordInput").value;
+      state.authLoading = true;
       renderAccount();
-    }
-  });
+
+      try {
+        const response =
+          state.authMode === "login"
+            ? await api.login({ username, password })
+            : await api.register({
+                username,
+                password,
+                dietary_preferences: [],
+                dietary_restrictions: [],
+              });
+
+        state.userId = response.user_id;
+        state.username = username;
+        persistSession();
+        await loadUserData();
+      } catch (error) {
+        setError(error.message);
+      } finally {
+        state.authLoading = false;
+        renderAccount();
+      }
+    });
 }
 
 function renderPreferences() {
-  const disabled = !state.userId || state.appLoading || state.panelLoading.preferences;
+  const disabled =
+    !state.userId || state.appLoading || state.panelLoading.preferences;
   const tags = getAllTags();
 
   elements.preferences.innerHTML = "";
@@ -552,15 +633,21 @@ function renderPreferences() {
   const message = elements.preferencesPanelBody.querySelector(".panel-message");
   message.textContent = state.panelErrors.preferences;
   message.hidden = !state.panelErrors.preferences;
-  elements.preferencesPanelBody.querySelector(".auth-required-note").hidden = Boolean(state.userId);
+  elements.preferencesPanelBody.querySelector(".auth-required-note").hidden =
+    Boolean(state.userId);
 
   elements.pantryInput.disabled = disabled || state.panelLoading.pantry;
-  elements.pantryForm.querySelector("button").disabled = disabled || state.panelLoading.pantry;
+  elements.pantryForm.querySelector("button").disabled =
+    disabled || state.panelLoading.pantry;
   renderPantry();
 }
 
 function renderPantry() {
   elements.pantryList.innerHTML = "";
+  if (!state.userId) {
+    elements.pantryEmpty.hidden = false;
+    return;
+  }
 
   if (!state.pantry.length) {
     elements.pantryEmpty.hidden = false;
@@ -569,20 +656,21 @@ function renderPantry() {
     state.pantry.forEach((item) => {
       const row = document.createElement("li");
       row.innerHTML = `
-        <span>${item}</span>
+        <span>${escapeHtml(formatIngredient(item))}</span>
         <button type="button" class="secondary-button">Remove</button>
       `;
-      row.querySelector("button").disabled = !state.userId || state.panelLoading.pantry;
+      row.querySelector("button").disabled =
+        !state.userId || state.panelLoading.pantry;
       row.querySelector("button").addEventListener("click", async () => {
         clearBanners();
         setPanelError("pantry", "");
         setPanelLoading("pantry", true);
         renderPreferences();
         try {
-          await api.removePantryItem(state.userId, item);
-          state.pantry = state.pantry.filter((value) => value !== item);
+          await api.removePantryItem(state.userId, item.id);
+          state.pantry = state.pantry.filter((value) => value.id !== item.id);
           await refreshShoppingList();
-          setStatus(`Removed ${item} from pantry.`);
+          setStatus(`Removed ${item.name} from pantry.`);
         } catch (error) {
           setPanelError("pantry", error.message);
         } finally {
@@ -594,22 +682,29 @@ function renderPantry() {
     });
   }
 
-  const pantryMessage = elements.preferencesPanelBody.querySelector(".pantry-message");
+  const pantryMessage =
+    elements.preferencesPanelBody.querySelector(".pantry-message");
   pantryMessage.textContent = state.panelErrors.pantry;
   pantryMessage.hidden = !state.panelErrors.pantry;
 }
 
 function renderRecipeDetail() {
-  const detail = state.selectedRecipeId ? state.recipeDetails.get(state.selectedRecipeId) || null : null;
+  const detail = state.selectedRecipeId
+    ? state.recipeDetails.get(state.selectedRecipeId) || null
+    : null;
 
   elements.recipeDetail.innerHTML = "";
   if (!state.selectedRecipeId) {
-    elements.recipeDetail.appendChild(createEmptyState("Select a recipe to load full instructions."));
+    elements.recipeDetail.appendChild(
+      createEmptyState("Select a recipe to load full instructions."),
+    );
     return;
   }
 
   if (!detail) {
-    elements.recipeDetail.appendChild(createEmptyState("Loading recipe details..."));
+    elements.recipeDetail.appendChild(
+      createEmptyState("Loading recipe details..."),
+    );
     return;
   }
 
@@ -619,19 +714,23 @@ function renderRecipeDetail() {
     <div class="split-heading">
       <div>
         <p class="eyebrow">Recipe Details</p>
-        <h3>${detail.name}</h3>
+        <h3>${escapeHtml(detail.name)}</h3>
       </div>
-      <span class="recipe-tags">${detail.dietary_tags.length ? detail.dietary_tags.join(" • ") : "No tags"}</span>
+      <span class="recipe-tags">${escapeHtml(detail.dietary_tags.length ? detail.dietary_tags.join(" / ") : "No tags")}</span>
     </div>
-    <p class="inline-note">Meal type: ${detail.meal_type} • Prep: ${detail.prep_time_minutes} min</p>
-    <p class="inline-note">Ingredients: ${detail.ingredients.join(", ")}</p>
+    <p class="inline-note">Serves ${detail.base_servings || "?"} | ${escapeHtml(detail.meal_type)} | About ${detail.prep_time_minutes} min</p>
+    <p class="inline-note">Ingredients: ${escapeHtml(detail.ingredients.map((i) => formatIngredient(i)).join(", "))}</p>
     <ol class="steps-list">
-      ${detail.steps.map((step) => `
+      ${detail.steps
+        .map(
+          (step) => `
         <li>
-          <strong>${step.instruction}</strong>
-          <span>${step.tip}</span>
+          <strong>${escapeHtml(step.instruction)}</strong>
+          <span>${escapeHtml(step.tip || "")}</span>
         </li>
-      `).join("")}
+      `,
+        )
+        .join("")}
     </ol>
   `;
 
@@ -641,15 +740,17 @@ function renderRecipeDetail() {
 function recipeCard(recipe) {
   const article = document.createElement("article");
   article.className = "recipe-card";
-  const isFavorite = state.favorites.some((favorite) => favorite.id === recipe.id);
+  const isFavorite = state.favorites.some(
+    (favorite) => favorite.id === recipe.id,
+  );
 
   article.innerHTML = `
     <div class="recipe-topline">
-      <span class="recipe-store">${recipe.meal_type}</span>
-      <span class="recipe-tags">${recipe.dietary_tags.length ? recipe.dietary_tags.join(" • ") : "No tags"}</span>
+      <span class="recipe-store">${escapeHtml(recipe.meal_type)}</span>
+      <span class="recipe-tags">${escapeHtml(recipe.dietary_tags.length ? recipe.dietary_tags.join(" / ") : "No tags")}</span>
     </div>
-    <h3>${recipe.name}</h3>
-    <p class="recipe-description">${recipe.ingredients.join(", ")}</p>
+    <h3>${escapeHtml(recipe.name)}</h3>
+    <p class="recipe-description">${escapeHtml(recipe.ingredients.map((i) => formatIngredient(i)).join(", "))}</p>
     <div class="recipe-meta">
       <span class="ingredient-pill">${recipe.prep_time_minutes} min</span>
       <span class="ingredient-pill">${recipe.ingredients.length} ingredients</span>
@@ -660,43 +761,49 @@ function recipeCard(recipe) {
     </div>
   `;
 
-  article.querySelector('[data-action="view"]').addEventListener("click", async () => {
-    state.selectedRecipeId = recipe.id;
-    renderRecipeDetail();
-    try {
-      await fetchRecipeDetails(recipe.id);
+  article
+    .querySelector('[data-action="view"]')
+    .addEventListener("click", async () => {
+      state.selectedRecipeId = recipe.id;
       renderRecipeDetail();
-    } catch (error) {
-      setPanelError("recipes", error.message);
-      renderRecipeDetail();
-    }
-  });
-
-  article.querySelector('[data-action="favorite"]').addEventListener("click", async () => {
-    if (!state.userId) {
-      setError("Login required before using favorites.");
-      return;
-    }
-
-    clearBanners();
-    try {
-      if (isFavorite) {
-        await api.removeFavorite(state.userId, recipe.id);
-        state.favorites = state.favorites.filter((favorite) => favorite.id !== recipe.id);
-        setStatus(`${recipe.name} removed from favorites.`);
-      } else {
-        await api.addFavorite(state.userId, recipe.id);
-        const fullRecipe = await fetchRecipeDetails(recipe.id);
-        state.favorites = [...state.favorites, fullRecipe];
-        setStatus(`${recipe.name} added to favorites.`);
+      try {
+        await fetchRecipeDetails(recipe.id);
+        renderRecipeDetail();
+      } catch (error) {
+        setPanelError("recipes", error.message);
+        renderRecipeDetail();
       }
-      renderRecipes();
-      renderFavorites();
-      renderSummary();
-    } catch (error) {
-      setError(error.message);
-    }
-  });
+    });
+
+  article
+    .querySelector('[data-action="favorite"]')
+    .addEventListener("click", async () => {
+      if (!state.userId) {
+        setError("Login required before using favorites.");
+        return;
+      }
+
+      clearBanners();
+      try {
+        if (isFavorite) {
+          await api.removeFavorite(state.userId, recipe.id);
+          state.favorites = state.favorites.filter(
+            (favorite) => favorite.id !== recipe.id,
+          );
+          setStatus(`${recipe.name} removed from favorites.`);
+        } else {
+          await api.addFavorite(state.userId, recipe.id);
+          const fullRecipe = await fetchRecipeDetails(recipe.id);
+          state.favorites = [...state.favorites, fullRecipe];
+          setStatus(`${recipe.name} added to favorites.`);
+        }
+        renderRecipes();
+        renderFavorites();
+        renderSummary();
+      } catch (error) {
+        setError(error.message);
+      }
+    });
 
   return article;
 }
@@ -721,12 +828,16 @@ function renderRecipes() {
   }
 
   if (state.panelErrors.recipes) {
-    elements.recipeGrid.appendChild(createEmptyState(state.panelErrors.recipes));
+    elements.recipeGrid.appendChild(
+      createEmptyState(state.panelErrors.recipes),
+    );
     return;
   }
 
   if (!state.recipes.length) {
-    elements.recipeGrid.appendChild(createEmptyState("No recipes match the current tag filter."));
+    elements.recipeGrid.appendChild(
+      createEmptyState("No recipes match the current tag filter."),
+    );
     return;
   }
 
@@ -777,14 +888,18 @@ function renderRecipePagination() {
 
 function renderStoreFinder() {
   const requiresPlan = !state.userId || !state.activePlanId;
-  elements.captureLocationButton.disabled = !state.userId || state.panelLoading.stores;
+  elements.captureLocationButton.disabled =
+    !state.userId || state.panelLoading.stores;
   elements.shopNowButton.disabled = requiresPlan || state.panelLoading.stores;
-  elements.locationQueryInput.disabled = !state.userId || state.panelLoading.stores;
+  elements.locationQueryInput.disabled =
+    !state.userId || state.panelLoading.stores;
 
   if (!state.userId) {
-    elements.locationStatus.textContent = "Login to find nearby grocery stores.";
+    elements.locationStatus.textContent =
+      "Login to find nearby grocery stores.";
   } else if (!state.activePlanId) {
-    elements.locationStatus.textContent = "Generate or load a meal plan before shopping.";
+    elements.locationStatus.textContent =
+      "Generate or load a meal plan before shopping.";
   } else if (state.panelLoading.stores) {
     elements.locationStatus.textContent = "Looking up nearby grocery stores...";
   } else if (state.panelErrors.stores) {
@@ -798,22 +913,32 @@ function renderStoreFinder() {
   elements.storeDetail.innerHTML = "";
 
   if (!state.userId) {
-    elements.storeResults.appendChild(createEmptyState("Nearby grocery stores appear here after login."));
+    elements.storeResults.appendChild(
+      createEmptyState("Nearby grocery stores appear here after login."),
+    );
     return;
   }
 
   if (!state.activePlanId) {
-    elements.storeResults.appendChild(createEmptyState("Create a meal plan to start shopping nearby."));
+    elements.storeResults.appendChild(
+      createEmptyState("Create a meal plan to start shopping nearby."),
+    );
     return;
   }
 
   if (state.panelLoading.stores) {
-    elements.storeResults.appendChild(createEmptyState("Finding nearby stores..."));
+    elements.storeResults.appendChild(
+      createEmptyState("Finding nearby stores..."),
+    );
     return;
   }
 
   if (!state.nearbyStores.length) {
-    elements.storeResults.appendChild(createEmptyState("No store lookup yet. Click Shop now to use your saved or default location."));
+    elements.storeResults.appendChild(
+      createEmptyState(
+        "No store lookup yet. Click Shop now to use your saved or default location.",
+      ),
+    );
     return;
   }
 
@@ -821,7 +946,8 @@ function renderStoreFinder() {
   state.storePage = Math.min(state.storePage, pageCount);
 
   getVisibleStores().forEach((store) => {
-    const averageRating = store.average_rating ?? getAverageStoreRating(store.store_id);
+    const averageRating =
+      store.average_rating ?? getAverageStoreRating(store.store_id);
     const card = document.createElement("article");
     card.className = "store-card";
     card.innerHTML = `
@@ -838,10 +964,12 @@ function renderStoreFinder() {
       </div>
     `;
 
-    card.querySelector('[data-action="view-reviews"]').addEventListener("click", () => {
-      state.selectedStoreId = store.store_id;
-      loadStoreReviews(store.store_id);
-    });
+    card
+      .querySelector('[data-action="view-reviews"]')
+      .addEventListener("click", () => {
+        state.selectedStoreId = store.store_id;
+        loadStoreReviews(store.store_id);
+      });
 
     elements.storeResults.appendChild(card);
   });
@@ -894,12 +1022,18 @@ function renderStoreDetail() {
   }
 
   const reviews = getStoreReviews(store.store_id);
-  const averageRating = store.average_rating ?? getAverageStoreRating(store.store_id);
+  const averageRating =
+    store.average_rating ?? getAverageStoreRating(store.store_id);
   const reviewCountLabel = `${reviews.length} review${reviews.length === 1 ? "" : "s"}`;
-  const currentUserReview = reviews.find((review) => review.user_id === state.userId) || null;
+  const currentUserReview =
+    reviews.find((review) => review.user_id === state.userId) || null;
   const submitLabel = state.panelLoading.storeReviews
-    ? currentUserReview ? "Saving..." : "Submitting..."
-    : currentUserReview ? "Edit review" : "Submit review";
+    ? currentUserReview
+      ? "Saving..."
+      : "Submitting..."
+    : currentUserReview
+      ? "Edit review"
+      : "Submit review";
 
   const wrapper = document.createElement("div");
   wrapper.className = "store-review-layout";
@@ -960,7 +1094,9 @@ function renderStoreDetail() {
           state.panelLoading.storeReviews && !reviews.length
             ? `<div class="empty-state">Loading reviews...</div>`
             : reviews.length
-            ? reviews.map((review) => `
+              ? reviews
+                  .map(
+                    (review) => `
               <article class="user-review-card">
                 <div class="user-review-header">
                   <div>
@@ -971,53 +1107,69 @@ function renderStoreDetail() {
                 </div>
                 <p>${escapeHtml(review.comment)}</p>
               </article>
-            `).join("")
-            : `<div class="empty-state">No reviews yet for this grocery store.</div>`
+            `,
+                  )
+                  .join("")
+              : `<div class="empty-state">No reviews yet for this grocery store.</div>`
         }
       </div>
     </section>
   `;
 
-  wrapper.querySelector('[data-action="close-reviews"]').addEventListener("click", () => {
-    state.selectedStoreId = null;
-    renderStoreFinder();
-  });
-
-  wrapper.querySelector("#storeReviewForm").addEventListener("submit", (event) => {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const comment = String(formData.get("review") || "").trim();
-
-    if (!comment) {
-      return;
-    }
-
-    clearBanners();
-    setPanelLoading("storeReviews", true);
-    setPanelError("storeReviews", "");
-    renderStoreFinder();
-
-    api.addStoreReview(store.store_id, {
-      user_id: state.userId,
-      rating: Number(formData.get("rating")),
-      comment,
-      store_name: store.name,
-      latitude: store.latitude,
-      longitude: store.longitude
-    }).then((response) => {
-      state.storeReviews[store.store_id] = response.reviews || [];
-      state.nearbyStores = state.nearbyStores.map((entry) => {
-        return entry.store_id === store.store_id ? { ...entry, ...response.store } : entry;
-      });
-      setStatus(currentUserReview ? `Review updated for ${store.name}.` : `Review saved for ${store.name}.`);
-    }).catch((error) => {
-      setPanelError("storeReviews", error.message);
-      setError(error.message);
-    }).finally(() => {
-      setPanelLoading("storeReviews", false);
+  wrapper
+    .querySelector('[data-action="close-reviews"]')
+    .addEventListener("click", () => {
+      state.selectedStoreId = null;
       renderStoreFinder();
     });
-  });
+
+  wrapper
+    .querySelector("#storeReviewForm")
+    .addEventListener("submit", (event) => {
+      event.preventDefault();
+      const formData = new FormData(event.currentTarget);
+      const comment = String(formData.get("review") || "").trim();
+
+      if (!comment) {
+        return;
+      }
+
+      clearBanners();
+      setPanelLoading("storeReviews", true);
+      setPanelError("storeReviews", "");
+      renderStoreFinder();
+
+      api
+        .addStoreReview(store.store_id, {
+          user_id: state.userId,
+          rating: Number(formData.get("rating")),
+          comment,
+          store_name: store.name,
+          latitude: store.latitude,
+          longitude: store.longitude,
+        })
+        .then((response) => {
+          state.storeReviews[store.store_id] = response.reviews || [];
+          state.nearbyStores = state.nearbyStores.map((entry) => {
+            return entry.store_id === store.store_id
+              ? { ...entry, ...response.store }
+              : entry;
+          });
+          setStatus(
+            currentUserReview
+              ? `Review updated for ${store.name}.`
+              : `Review saved for ${store.name}.`,
+          );
+        })
+        .catch((error) => {
+          setPanelError("storeReviews", error.message);
+          setError(error.message);
+        })
+        .finally(() => {
+          setPanelLoading("storeReviews", false);
+          renderStoreFinder();
+        });
+    });
 
   const submitButton = wrapper.querySelector("#storeReviewForm button");
   submitButton.disabled = state.panelLoading.storeReviews;
@@ -1034,19 +1186,25 @@ function renderStoreDetail() {
     setPanelError("storeReviews", "");
     renderStoreFinder();
 
-    api.deleteStoreReview(store.store_id, state.userId).then((response) => {
-      state.storeReviews[store.store_id] = response.reviews || [];
-      state.nearbyStores = state.nearbyStores.map((entry) => {
-        return entry.store_id === store.store_id ? { ...entry, ...response.store } : entry;
+    api
+      .deleteStoreReview(store.store_id, state.userId)
+      .then((response) => {
+        state.storeReviews[store.store_id] = response.reviews || [];
+        state.nearbyStores = state.nearbyStores.map((entry) => {
+          return entry.store_id === store.store_id
+            ? { ...entry, ...response.store }
+            : entry;
+        });
+        setStatus(`Review deleted for ${store.name}.`);
+      })
+      .catch((error) => {
+        setPanelError("storeReviews", error.message);
+        setError(error.message);
+      })
+      .finally(() => {
+        setPanelLoading("storeReviews", false);
+        renderStoreFinder();
       });
-      setStatus(`Review deleted for ${store.name}.`);
-    }).catch((error) => {
-      setPanelError("storeReviews", error.message);
-      setError(error.message);
-    }).finally(() => {
-      setPanelLoading("storeReviews", false);
-      renderStoreFinder();
-    });
   });
 
   elements.storeDetail.appendChild(wrapper);
@@ -1056,20 +1214,24 @@ function renderManualShoppingItems() {
   elements.manualShoppingList.innerHTML = "";
 
   if (!state.userId) {
-    elements.manualShoppingList.appendChild(createEmptyState("Login to save manual shopping items."));
+    elements.manualShoppingList.appendChild(
+      createEmptyState("Login to save manual shopping items."),
+    );
     return;
   }
 
   if (!state.manualShoppingItems.length) {
-    elements.manualShoppingList.appendChild(createEmptyState("No manual shopping items yet."));
+    elements.manualShoppingList.appendChild(
+      createEmptyState("No manual shopping items yet."),
+    );
     return;
   }
 
   state.manualShoppingItems.forEach((item) => {
     const row = document.createElement("li");
-    const display = [item.quantity || 1, item.unit || "", item.name].filter(Boolean).join(" ");
+    const display = formatIngredient(item);
     row.innerHTML = `
-      <span>${display}</span>
+      <span>${escapeHtml(display)}</span>
       <button type="button" class="secondary-button">Remove</button>
     `;
     row.querySelector("button").disabled = state.panelLoading.manualShopping;
@@ -1079,7 +1241,9 @@ function renderManualShoppingItems() {
       renderManualShoppingItems();
       try {
         await api.removeManualShoppingItem(state.userId, item.id);
-        state.manualShoppingItems = state.manualShoppingItems.filter((entry) => entry.id !== item.id);
+        state.manualShoppingItems = state.manualShoppingItems.filter(
+          (entry) => entry.id !== item.id,
+        );
         await refreshShoppingList();
         setStatus(`${item.name} removed from manual shopping items.`);
       } catch (error) {
@@ -1094,132 +1258,217 @@ function renderManualShoppingItems() {
 }
 
 function renderShoppingLists() {
+  document.querySelector("#shoppingWarnings").textContent =
+    state.shoppingWarnings.join(" ");
   elements.shoppingList.innerHTML = "";
   elements.alreadyHaveList.innerHTML = "";
 
   if (!state.userId) {
-    elements.shoppingList.appendChild(createEmptyState("Login to generate a shopping list."));
-    elements.alreadyHaveList.appendChild(createEmptyState("Pantry matches appear here after a plan is loaded."));
+    elements.shoppingList.appendChild(
+      createEmptyState("Login to generate a shopping list."),
+    );
+    elements.alreadyHaveList.appendChild(
+      createEmptyState("Pantry amounts appear here after a plan is loaded."),
+    );
     return;
   }
 
   if (state.panelLoading.shoppingList) {
-    elements.shoppingList.appendChild(createEmptyState("Loading shopping list..."));
-    elements.alreadyHaveList.appendChild(createEmptyState("Checking pantry coverage..."));
+    elements.shoppingList.appendChild(
+      createEmptyState("Loading shopping list..."),
+    );
+    elements.alreadyHaveList.appendChild(
+      createEmptyState("Checking pantry coverage..."),
+    );
     return;
   }
 
   if (state.panelErrors.shoppingList) {
-    elements.shoppingList.appendChild(createEmptyState(state.panelErrors.shoppingList));
-    elements.alreadyHaveList.appendChild(createEmptyState(state.panelErrors.shoppingList));
+    elements.shoppingList.appendChild(
+      createEmptyState(state.panelErrors.shoppingList),
+    );
+    elements.alreadyHaveList.appendChild(
+      createEmptyState(state.panelErrors.shoppingList),
+    );
     return;
   }
 
   if (!state.shoppingListItems.length) {
-    elements.shoppingList.appendChild(createEmptyState("No shopping list yet for the current meal plan."));
+    elements.shoppingList.appendChild(
+      createEmptyState(
+        "No ingredients to buy, or this plan needs the changes shown above.",
+      ),
+    );
   } else {
     state.shoppingListItems.forEach((item) => {
       const row = document.createElement("li");
-      row.innerHTML = `<span>${item.display}</span><strong>${item.sources.join(" + ")}</strong>`;
+      row.innerHTML = `<label class="check-field shopping-check"><input type="checkbox" ${item.checked ? "checked" : ""} /><span>${escapeHtml(item.display)}</span></label>`;
+      row.querySelector("input").addEventListener("change", async (event) => {
+        const input = event.target;
+        input.disabled = true;
+        try {
+          await api.checkShopping(state.userId, state.activePlanId, {
+            key: item.key,
+            checked: input.checked,
+          });
+          item.checked = input.checked;
+        } catch (error) {
+          input.checked = item.checked;
+          setError(error.message);
+        } finally {
+          input.disabled = false;
+        }
+      });
       elements.shoppingList.appendChild(row);
     });
   }
 
   if (!state.alreadyHaveItems.length) {
-    elements.alreadyHaveList.appendChild(createEmptyState("No pantry matches yet."));
+    elements.alreadyHaveList.appendChild(
+      createEmptyState("No pantry matches yet."),
+    );
   } else {
     state.alreadyHaveItems.forEach((item) => {
       const row = document.createElement("li");
-      row.innerHTML = `<span>${item.display}</span><strong>${item.sources.join(" + ")}</strong>`;
+      row.innerHTML = `<span>${escapeHtml(item.display)}</span>`;
       elements.alreadyHaveList.appendChild(row);
     });
   }
 }
 
+async function changePlan(plan, payload, action = "update") {
+  if (state.panelLoading.mealPlans) return;
+  clearBanners();
+  setPanelLoading("mealPlans", true);
+  renderPlanner();
+  try {
+    const body = { ...payload, version: plan.version };
+    if (action === "swap") await api.swapMeal(state.userId, plan.id, body);
+    else if (action === "auto")
+      await api.swapMealAuto(state.userId, plan.id, body);
+    else await api.updatePlan(state.userId, plan.id, body);
+    setStatus("Dinner plan saved. Your shopping list has been updated.");
+  } catch (error) {
+    setError(error.message);
+  } finally {
+    await refreshMealPlans();
+  }
+}
 function renderPlanner() {
   const activePlan = getActivePlan();
   elements.planPickerWrap.hidden = state.mealPlans.length === 0;
   elements.planPicker.innerHTML = "";
-
   state.mealPlans.forEach((plan, index) => {
     const option = document.createElement("option");
     option.value = plan.id;
-    option.textContent = `Plan ${index + 1} • ${plan.id.slice(0, 8)}`;
+    option.textContent = plan.start_date
+      ? `${plan.start_date} | ${plan.entries.length} dinners for ${plan.servings}`
+      : `Earlier plan ${index + 1}`;
     option.selected = plan.id === state.activePlanId;
     elements.planPicker.appendChild(option);
   });
-
-  elements.generatePlanButton.disabled = !state.userId || state.panelLoading.mealPlans;
-  elements.reloadPlansButton.disabled = !state.userId || state.panelLoading.mealPlans;
+  const busy = state.panelLoading.mealPlans;
+  elements.generatePlanButton.disabled = !state.userId || busy;
+  elements.reloadPlansButton.disabled = !state.userId || busy;
   elements.weeklyMeals.innerHTML = "";
-
-  if (!state.userId) {
-    elements.weeklyMeals.appendChild(createEmptyState("Login to generate and manage meal plans."));
-  } else if (state.panelLoading.mealPlans) {
-    elements.weeklyMeals.appendChild(createEmptyState("Loading meal plans..."));
-  } else if (state.panelErrors.mealPlans) {
-    elements.weeklyMeals.appendChild(createEmptyState(state.panelErrors.mealPlans));
-  } else if (!activePlan) {
-    elements.weeklyMeals.appendChild(createEmptyState("No meal plan saved yet. Generate one to get started."));
-  } else {
-    activePlan.recipe_ids.forEach((recipeId, dayIndex) => {
-      const recipe = getRecipeById(recipeId) || state.recipeDetails.get(recipeId);
+  const tools = document.querySelector("#savedPlanTools");
+  tools.innerHTML = "";
+  if (!state.userId)
+    elements.weeklyMeals.appendChild(
+      createEmptyState("Sign in to save your dinner plan."),
+    );
+  else if (busy)
+    elements.weeklyMeals.appendChild(
+      createEmptyState("Updating your dinners..."),
+    );
+  else if (!activePlan)
+    elements.weeklyMeals.appendChild(
+      createEmptyState(
+        state.panelErrors.mealPlans ||
+          "Choose a start date and plan your first dinners.",
+      ),
+    );
+  else if (!activePlan.entries)
+    elements.weeklyMeals.appendChild(
+      createEmptyState(
+        "This earlier plan has no serving amounts. Create a new dinner plan to use shopping calculations and guided cooking.",
+      ),
+    );
+  else {
+    if (state.panelErrors.mealPlans)
+      elements.weeklyMeals.appendChild(
+        createEmptyState(state.panelErrors.mealPlans),
+      );
+    tools.innerHTML = `<label>People for this saved plan<input id="savedServings" type="number" min="1" max="8" value="${activePlan.servings}" /></label><button id="saveServings" type="button" class="secondary-button">Update portions</button><button id="replanMeals" type="button" class="secondary-button">Replan unlocked dinners</button><button id="removePlan" type="button" class="secondary-button">Remove plan</button>`;
+    tools.querySelector("#saveServings").onclick = () =>
+      changePlan(activePlan, {
+        action: "servings",
+        servings: Number(tools.querySelector("#savedServings").value),
+      });
+    tools.querySelector("#replanMeals").onclick = () =>
+      changePlan(activePlan, { action: "replan" });
+    tools.querySelector("#removePlan").onclick = async () => {
+      if (!window.confirm("Remove this saved plan and its cooking progress?"))
+        return;
+      try {
+        await api.deletePlan(state.userId, activePlan.id);
+        await refreshMealPlans();
+        setStatus("Plan removed.");
+      } catch (error) {
+        setError(error.message);
+      }
+    };
+    activePlan.entries.forEach((entry) => {
+      const recipe = getRecipeById(entry.recipe_id);
       const card = document.createElement("article");
-      card.className = "weekly-card";
-      const swapOptions = state.allRecipes
-        .map((item) => `<option value="${item.id}" ${item.id === recipeId ? "selected" : ""}>${item.name}</option>`)
+      card.className = `weekly-card ${entry.kind === "leftover" ? "leftover-card" : ""}`;
+      const date = new Date(`${entry.date}T12:00:00`).toLocaleDateString(
+        undefined,
+        { weekday: "short", month: "short", day: "numeric" },
+      );
+      const options = state.planCandidates
+        .map(
+          (r) =>
+            `<option value="${escapeHtml(r.id)}" ${r.id === entry.recipe_id ? "selected" : ""}>${escapeHtml(r.name)}</option>`,
+        )
         .join("");
-
-      card.innerHTML = `
-        <span class="meal-day">${weekDays[dayIndex]}</span>
-        <h3>${recipe ? recipe.name : recipeId}</h3>
-        <div class="recipe-meta">
-          ${
-            recipe
-              ? recipe.ingredients.map((ingredient) => `<span class="ingredient-pill">${ingredient}</span>`).join("")
-              : `<span class="ingredient-pill">Recipe unavailable</span>`
-          }
-        </div>
-        <div class="swap-controls">
-          <select aria-label="Swap meal for ${weekDays[dayIndex]}">${swapOptions}</select>
-          <button type="button" data-action="swap">Swap meal</button>
-          <button type="button" class="secondary-button" data-action="auto-swap">Auto swap</button>
-        </div>
-      `;
-
-      const select = card.querySelector("select");
-      const swapButton = card.querySelector('[data-action="swap"]');
-      const autoSwapButton = card.querySelector('[data-action="auto-swap"]');
-
-      swapButton.addEventListener("click", async () => {
-        clearBanners();
+      const matches = state.planCandidates.some(
+        (r) => r.id === entry.recipe_id,
+      );
+      card.innerHTML = `<span class="meal-day">${escapeHtml(date)}</span><h3>${escapeHtml(recipe?.name || "Recipe unavailable")}</h3>
+        <p class="inline-note">${entry.kind === "leftover" ? `Reserved leftovers for ${entry.servings}` : `Cook ${entry.servings} portions | about ${recipe?.prep_time_minutes || "?"} min${entry.servings > activePlan.servings ? " | includes tomorrow" : ""}`}</p>
+        ${!matches ? '<p class="warning-text">Does not match your current settings. Change the cooking day before using this meal.</p>' : ""}
+        <button type="button" data-action="cook" ${!matches ? "disabled" : ""}>${entry.kind === "leftover" ? "Reheat leftovers" : "Start / resume cooking"}</button>
+        ${entry.kind === "cook" ? `<label class="check-field"><input type="checkbox" data-action="lock" ${entry.locked ? "checked" : ""} />Keep this dinner</label><div class="swap-controls"><label>Choose another dinner<select aria-label="Swap dinner for ${escapeHtml(date)}" ${entry.locked || !options ? "disabled" : ""}>${!matches ? '<option value="">Choose a matching dinner</option>' : ""}${options}</select></label><button type="button" data-action="swap" ${entry.locked || !options ? "disabled" : ""}>Swap dinner</button><button type="button" data-action="auto" class="secondary-button" ${entry.locked || state.planCandidates.length < 2 ? "disabled" : ""}>Suggest another</button></div>` : '<p class="inline-note">Changing the original dinner also updates this reserved portion.</p>'}`;
+      card.querySelector('[data-action="cook"]').onclick = async () => {
         try {
-          await api.swapMeal(state.userId, activePlan.id, {
-            day_index: dayIndex,
-            new_recipe_id: select.value
+          await openCooking(state.userId, activePlan.id, entry.id);
+        } catch (error) {
+          setError(error.message);
+        }
+      };
+      if (entry.kind === "cook") {
+        card.querySelector('[data-action="lock"]').onchange = (event) =>
+          changePlan(activePlan, {
+            action: "lock",
+            entry_id: entry.id,
+            locked: event.target.checked,
           });
-          setStatus(`Swapped ${weekDays[dayIndex]}'s meal.`);
-          await refreshMealPlans();
-        } catch (error) {
-          setError(error.message);
-        }
-      });
-
-      autoSwapButton.addEventListener("click", async () => {
-        clearBanners();
-        try {
-          await api.swapMealAuto(state.userId, activePlan.id, dayIndex);
-          setStatus(`Auto-swapped ${weekDays[dayIndex]}'s meal.`);
-          await refreshMealPlans();
-        } catch (error) {
-          setError(error.message);
-        }
-      });
-
+        card.querySelector('[data-action="swap"]').onclick = () =>
+          changePlan(
+            activePlan,
+            {
+              entry_id: entry.id,
+              new_recipe_id: card.querySelector("select").value,
+            },
+            "swap",
+          );
+        card.querySelector('[data-action="auto"]').onclick = () =>
+          changePlan(activePlan, { entry_id: entry.id }, "auto");
+      }
       elements.weeklyMeals.appendChild(card);
     });
   }
-
   renderManualShoppingItems();
   renderShoppingLists();
   renderStoreFinder();
@@ -1229,12 +1478,16 @@ function renderFavorites() {
   elements.favoriteMeals.innerHTML = "";
 
   if (!state.userId) {
-    elements.favoriteMeals.appendChild(createEmptyState("Login to save favorite recipes."));
+    elements.favoriteMeals.appendChild(
+      createEmptyState("Login to save favorite recipes."),
+    );
     return;
   }
 
   if (!state.favorites.length) {
-    elements.favoriteMeals.appendChild(createEmptyState("No favorite recipes saved yet."));
+    elements.favoriteMeals.appendChild(
+      createEmptyState("No favorite recipes saved yet."),
+    );
     return;
   }
 
@@ -1242,10 +1495,10 @@ function renderFavorites() {
     const card = document.createElement("article");
     card.className = "favorite-card";
     card.innerHTML = `
-      <h3>${recipe.name}</h3>
-      <p class="recipe-description">${recipe.ingredients.join(", ")}</p>
+      <h3>${escapeHtml(recipe.name)}</h3>
+      <p class="recipe-description">${escapeHtml(recipe.ingredients.map((i) => formatIngredient(i)).join(", "))}</p>
       <div class="recipe-meta">
-        <span class="ingredient-pill">${recipe.dietary_tags.length ? recipe.dietary_tags.join(" • ") : "No tags"}</span>
+        <span class="ingredient-pill">${escapeHtml(recipe.dietary_tags.length ? recipe.dietary_tags.join(" / ") : "No tags")}</span>
       </div>
       <div class="recipe-actions">
         <button type="button" data-action="view">View recipe</button>
@@ -1253,30 +1506,36 @@ function renderFavorites() {
       </div>
     `;
 
-    card.querySelector('[data-action="view"]').addEventListener("click", async () => {
-      state.selectedRecipeId = recipe.id;
-      renderRecipeDetail();
-      try {
-        await fetchRecipeDetails(recipe.id);
+    card
+      .querySelector('[data-action="view"]')
+      .addEventListener("click", async () => {
+        state.selectedRecipeId = recipe.id;
         renderRecipeDetail();
-      } catch (error) {
-        setError(error.message);
-      }
-    });
+        try {
+          await fetchRecipeDetails(recipe.id);
+          renderRecipeDetail();
+        } catch (error) {
+          setError(error.message);
+        }
+      });
 
-    card.querySelector('[data-action="remove"]').addEventListener("click", async () => {
-      clearBanners();
-      try {
-        await api.removeFavorite(state.userId, recipe.id);
-        state.favorites = state.favorites.filter((favorite) => favorite.id !== recipe.id);
-        renderFavorites();
-        renderRecipes();
-        renderSummary();
-        setStatus(`${recipe.name} removed from favorites.`);
-      } catch (error) {
-        setError(error.message);
-      }
-    });
+    card
+      .querySelector('[data-action="remove"]')
+      .addEventListener("click", async () => {
+        clearBanners();
+        try {
+          await api.removeFavorite(state.userId, recipe.id);
+          state.favorites = state.favorites.filter(
+            (favorite) => favorite.id !== recipe.id,
+          );
+          renderFavorites();
+          renderRecipes();
+          renderSummary();
+          setStatus(`${recipe.name} removed from favorites.`);
+        } catch (error) {
+          setError(error.message);
+        }
+      });
 
     elements.favoriteMeals.appendChild(card);
   });
@@ -1299,23 +1558,25 @@ elements.savePreferencesButton.addEventListener("click", async () => {
     return;
   }
 
+  const restrictions = elements.restrictionsInput.value
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
   clearBanners();
   setPanelError("preferences", "");
   setPanelLoading("preferences", true);
   renderPreferences();
 
   try {
-    const restrictions = elements.restrictionsInput.value
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean);
-
     await api.updatePreferences(state.userId, {
       dietary_preferences: state.preferences,
-      dietary_restrictions: restrictions
+      dietary_restrictions: restrictions,
     });
     state.restrictions = restrictions;
-    setStatus("Preferences saved.");
+    await refreshShoppingList();
+    setStatus(
+      "Dietary settings saved. Existing dinners that no longer match are marked for you to change.",
+    );
   } catch (error) {
     setPanelError("preferences", error.message);
   } finally {
@@ -1343,9 +1604,12 @@ elements.pantryForm.addEventListener("submit", async (event) => {
   renderPreferences();
 
   try {
-    const nextPantry = state.pantry.includes(item) ? state.pantry : [...state.pantry, item];
-    const response = await api.updatePantry(state.userId, { items: nextPantry });
-    state.pantry = response.pantry || nextPantry;
+    const response = await api.updatePantry(state.userId, {
+      name: item,
+      quantity: Number(document.querySelector("#pantryQuantity").value),
+      unit: document.querySelector("#pantryUnit").value,
+    });
+    state.pantry = response.pantry;
     elements.pantryInput.value = "";
     await refreshShoppingList();
     setStatus(`${item} added to pantry.`);
@@ -1381,10 +1645,18 @@ elements.generatePlanButton.addEventListener("click", async () => {
   renderPlanner();
 
   try {
-    const plan = await api.generateMealPlan(state.userId);
+    const plan = await api.generateMealPlan(state.userId, {
+      start_date: document.querySelector("#planStart").value,
+      days: Number(document.querySelector("#planDays").value),
+      servings: Number(document.querySelector("#planServings").value),
+      max_minutes: Number(document.querySelector("#planMinutes").value),
+      leftovers: document.querySelector("#planLeftovers").checked,
+    });
     state.activePlanId = plan.id;
     await refreshMealPlans();
-    setStatus("Generated a new 7-day meal plan.");
+    setStatus(
+      "Your dinner plan is ready. Review your meals and shopping list below.",
+    );
   } catch (error) {
     setPanelError("mealPlans", error.message);
   } finally {
@@ -1407,10 +1679,12 @@ elements.captureLocationButton.addEventListener("click", () => {
       state.shopLocation = {
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
-        label: `${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`
+        label: `${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`,
       };
       elements.locationQueryInput.value = state.shopLocation.label;
-      setStatus("Location captured. Click Shop now to find nearby grocery stores.");
+      setStatus(
+        "Location captured. Click Shop now to find nearby grocery stores.",
+      );
       renderStoreFinder();
     },
     (error) => {
@@ -1420,8 +1694,8 @@ elements.captureLocationButton.addEventListener("click", () => {
     {
       enableHighAccuracy: true,
       timeout: 10000,
-      maximumAge: 300000
-    }
+      maximumAge: 300000,
+    },
   );
 });
 
@@ -1449,13 +1723,13 @@ elements.shopNowButton.addEventListener("click", async () => {
     const payload = coordinateQuery
       ? {
           latitude: coordinateQuery.latitude,
-          longitude: coordinateQuery.longitude
+          longitude: coordinateQuery.longitude,
         }
       : queryText
         ? { location_query: queryText }
         : {
             latitude: lookupLocation.latitude,
-            longitude: lookupLocation.longitude
+            longitude: lookupLocation.longitude,
           };
 
     const response = await api.findNearbyStores(payload);
@@ -1464,7 +1738,9 @@ elements.shopNowButton.addEventListener("click", async () => {
     if (response.resolved_location) {
       elements.locationQueryInput.value = response.resolved_location;
     }
-    setStatus(`Nearby grocery stores loaded using ${response.resolved_location || queryText || lookupLocation.label}.`);
+    setStatus(
+      `Nearby grocery stores loaded using ${response.resolved_location || queryText || lookupLocation.label}.`,
+    );
   } catch (error) {
     state.nearbyStores = [];
     setPanelError("stores", error.message);
@@ -1501,7 +1777,9 @@ elements.manualShoppingForm.addEventListener("submit", async (event) => {
   const unit = elements.manualItemUnit.value.trim();
 
   if (!name || !Number.isFinite(quantity) || quantity <= 0) {
-    setError("Manual shopping item requires a name and a quantity greater than 0.");
+    setError(
+      "Manual shopping item requires a name and a quantity greater than 0.",
+    );
     return;
   }
 
@@ -1510,7 +1788,11 @@ elements.manualShoppingForm.addEventListener("submit", async (event) => {
   renderManualShoppingItems();
 
   try {
-    const response = await api.addManualShoppingItem(state.userId, { name, quantity, unit });
+    const response = await api.addManualShoppingItem(state.userId, {
+      name,
+      quantity,
+      unit,
+    });
     state.manualShoppingItems = [...state.manualShoppingItems, response.item];
     elements.manualShoppingForm.reset();
     elements.manualItemQuantity.value = "1";
@@ -1524,11 +1806,61 @@ elements.manualShoppingForm.addEventListener("submit", async (event) => {
   }
 });
 
-loadStoredSession();
-render();
-loadRecipes().then(() => {
-  if (state.userId) {
-    return loadUserData();
-  }
-  return null;
+const unitOptions = [
+  "count",
+  "cup",
+  "tbsp",
+  "tsp",
+  "g",
+  "kg",
+  "oz",
+  "lb",
+  "ml",
+  "l",
+  "clove",
+  "slice",
+  "can",
+];
+for (const id of ["pantryUnit", "manualItemUnit"])
+  document.querySelector(`#${id}`).innerHTML = unitOptions
+    .map(
+      (unit) =>
+        `<option value="${unit}">${unit === "count" ? "items" : unit}</option>`,
+    )
+    .join("");
+document.querySelector("#pantryUnit").value = "cup";
+const today = new Date();
+document.querySelector("#planStart").value =
+  `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+document.querySelector("#planSettings").addEventListener("submit", (event) => {
+  event.preventDefault();
+  elements.generatePlanButton.click();
 });
+window.addEventListener("mychef:expired", () => {
+  clearSession();
+  setError("Please sign in again to continue.");
+  render();
+});
+async function initialize() {
+  loadStoredSession();
+  render();
+  await loadRecipes();
+  try {
+    const options = await api.dietaryOptions();
+    document.querySelector("#exclusionOptions").textContent =
+      options.exclusions.join(", ");
+  } catch (error) {
+    setError(error.message);
+  }
+  try {
+    const session = await api.session();
+    state.userId = session.user_id;
+    state.username = session.username;
+    await loadUserData();
+  } catch (error) {
+    clearSession();
+    if (error.status !== 401) setError(error.message);
+    render();
+  }
+}
+initialize();

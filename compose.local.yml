@@ -1,0 +1,19 @@
+services:
+  db:
+    image: mysql:8.4
+    ports:
+      - "127.0.0.1:23316:3306"
+    environment:
+      MYSQL_DATABASE: mychef_local
+      MYSQL_USER: mychef_local
+      MYSQL_PASSWORD: local-development-only
+      MYSQL_ROOT_PASSWORD: local-root-development-only
+    volumes:
+      - mychef_cooking_week:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+volumes:
+  mychef_cooking_week:

@@ -2,6 +2,7 @@ const express = require("express");
 const path = require("path");
 
 const app = express();
+app.disable("x-powered-by");
 const port = process.env.PORT || 3000;
 const host = process.env.HOST || "127.0.0.1";
 const publicDir = path.join(__dirname, "public");
@@ -14,7 +15,7 @@ app.get("/app-config.js", (_req, res) => {
 
 app.use(express.static(publicDir));
 
-app.get("*", (_req, res) => {
+app.get("/{*path}", (_req, res) => {
   res.sendFile(path.join(publicDir, "index.html"));
 });
 

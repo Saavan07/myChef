@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -17,21 +17,21 @@
       <header class="hero">
         <div class="hero-copy">
           <p class="eyebrow">MyChef</p>
-          <h1>Student meal planning connected to a real backend.</h1>
+          <h1>A little planning. A better week of dinners.</h1>
           <p class="hero-text">
-            This app now uses a backend API for accounts, recipes, pantry items,
-            meal plans, favorites, manual shopping items, and shopping-list generation.
+            Use what you have, make room for leftovers, and head to the store
+            with a list that adds up.
           </p>
         </div>
         <div class="hero-card">
-          <h2>Session Snapshot</h2>
+          <h2>Your kitchen this week</h2>
           <div class="summary-grid">
             <div>
-              <span class="summary-label">Recipes Loaded</span>
+              <span class="summary-label">Recipes</span>
               <strong id="recipeCount">0</strong>
             </div>
             <div>
-              <span class="summary-label">Favorites Saved</span>
+              <span class="summary-label">Favorites</span>
               <strong id="favoriteCount">0</strong>
             </div>
             <div>
@@ -46,9 +46,23 @@
         </div>
       </header>
 
-      <div id="statusBanner" class="banner banner-success" hidden></div>
-      <div id="errorBanner" class="banner banner-error" hidden></div>
+      <div
+        role="status"
+        id="statusBanner"
+        class="banner banner-success"
+        hidden
+      ></div>
+      <div
+        role="alert"
+        id="errorBanner"
+        class="banner banner-error"
+        hidden
+      ></div>
 
+      <nav class="section-nav" aria-label="Kitchen sections">
+        <a href="#planner">Plan dinners</a><a href="#shopping">Shopping list</a
+        ><a href="#kitchen">My pantry</a><a href="#recipes">Recipes</a>
+      </nav>
       <main class="dashboard">
         <section class="panel account-panel">
           <div class="section-heading">
@@ -58,47 +72,93 @@
           <div id="accountPanelBody"></div>
         </section>
 
-        <section class="panel preferences-panel">
+        <section class="panel preferences-panel" id="kitchen">
           <div class="section-heading">
             <p class="eyebrow">2. Preferences + Pantry</p>
-            <h2>Save diet settings</h2>
+            <h2>Your kitchen</h2>
           </div>
           <div id="preferencesPanelBody">
             <p class="panel-message" hidden></p>
-            <p class="inline-note auth-required-note">Login is required before saving preferences and pantry items.</p>
+            <p class="inline-note auth-required-note">
+              Login is required before saving preferences and pantry items.
+            </p>
             <div id="preferences" class="chip-grid"></div>
             <label class="stacked-field">
-              Dietary restrictions
-              <textarea id="restrictionsInput" rows="3" placeholder="no nuts, no shellfish"></textarea>
+              Ingredients to exclude
+              <textarea
+                id="restrictionsInput"
+                rows="3"
+                placeholder="no nuts, no shellfish, spinach"
+              ></textarea>
             </label>
-            <button id="savePreferencesButton" type="button">Save preferences</button>
+            <p class="inline-note">
+              Selected diets and recognized exclusions are all required. Check
+              package labels for allergens and cross-contact; this app cannot
+              establish allergy safety.
+            </p>
+            <details>
+              <summary>Supported exclusions</summary>
+              <p id="exclusionOptions" class="inline-note"></p>
+            </details>
+            <button id="savePreferencesButton" type="button">
+              Save preferences
+            </button>
             <div class="subsection">
               <div class="subsection-header">
                 <h3>Pantry</h3>
-                <p class="inline-note">Pantry items remove duplicates from shopping suggestions.</p>
+                <p class="inline-note">
+                  Enter the amount you have left. Compatible units are
+                  converted; weights and volumes stay separate.
+                </p>
               </div>
               <form id="pantryForm" class="pantry-form">
-                <input type="text" id="pantryInput" placeholder="Add ingredient" />
+                <label
+                  >Ingredient<input
+                    type="text"
+                    id="pantryInput"
+                    list="ingredientNames"
+                    placeholder="rice"
+                    required
+                    maxlength="80"
+                /></label>
+                <label
+                  >Amount<input
+                    id="pantryQuantity"
+                    type="number"
+                    min="0.001"
+                    step="any"
+                    value="1"
+                    required
+                /></label>
+                <label>Unit<select id="pantryUnit"></select></label>
                 <button type="submit">Add item</button>
               </form>
               <p class="panel-message pantry-message" hidden></p>
-              <div id="pantryEmpty" class="empty-state">No pantry items saved yet.</div>
+              <div id="pantryEmpty" class="empty-state">
+                No pantry items saved yet.
+              </div>
               <ul id="pantryList" class="compact-list"></ul>
             </div>
           </div>
         </section>
 
-        <section class="panel recipes-panel">
+        <section class="panel recipes-panel" id="recipes">
           <div class="section-heading split-heading">
             <div>
-              <p class="eyebrow">3. Recipes</p>
-              <h2>Browse backend recipes</h2>
+              <p class="eyebrow">4. Recipes</p>
+              <h2>Find something to cook</h2>
             </div>
             <div class="toolbar">
               <select id="recipeFilter" aria-label="Recipe tag filter">
                 <option value="">All tags</option>
               </select>
-              <button id="refreshRecipes" type="button" class="secondary-button">Reload</button>
+              <button
+                id="refreshRecipes"
+                type="button"
+                class="secondary-button"
+              >
+                Reload
+              </button>
             </div>
           </div>
           <div id="recipeGrid" class="recipe-grid"></div>
@@ -106,38 +166,109 @@
           <div id="recipeDetail" class="recipe-detail"></div>
         </section>
 
-        <section class="panel planner-panel">
+        <section class="panel planner-panel" id="planner">
           <div class="section-heading">
-            <p class="eyebrow">4. Meal Planning</p>
-            <h2>Generate, swap, and shop</h2>
+            <p class="eyebrow">3. Meal Planning</p>
+            <h2>Your dinner plan</h2>
           </div>
+          <form id="planSettings" class="plan-settings">
+            <label
+              >Start date<input id="planStart" type="date" required
+            /></label>
+            <label
+              >Dinners<select id="planDays">
+                <option>3</option>
+                <option selected>5</option>
+                <option>7</option>
+                <option>1</option>
+                <option>2</option>
+                <option>4</option>
+                <option>6</option>
+              </select></label
+            >
+            <label
+              >People<input
+                id="planServings"
+                type="number"
+                min="1"
+                max="8"
+                value="2"
+                required
+            /></label>
+            <label
+              >Time per cooking day<select id="planMinutes">
+                <option value="15">Up to 15 minutes</option>
+                <option value="20">Up to 20 minutes</option>
+                <option value="30" selected>Up to 30 minutes</option>
+                <option value="45">Up to 45 minutes</option>
+                <option value="60">Up to 60 minutes</option>
+              </select></label
+            >
+            <label class="check-field"
+              ><input id="planLeftovers" type="checkbox" checked />Cook extra
+              for the following night</label
+            >
+          </form>
+          <p class="inline-note">
+            Leftover nights reserve extra portions from the previous cooking
+            day. Times are estimates and can increase with larger batches.
+          </p>
           <div class="planner-controls">
-            <button id="generatePlanButton" type="button">Generate 7-day plan</button>
-            <button id="reloadPlansButton" type="button" class="secondary-button">Reload plans</button>
+            <button id="generatePlanButton" type="button">
+              Plan my dinners
+            </button>
+            <button
+              id="reloadPlansButton"
+              type="button"
+              class="secondary-button"
+            >
+              Reload plans
+            </button>
           </div>
           <label id="planPickerWrap" class="stacked-field" hidden>
             Choose saved plan
             <select id="planPicker"></select>
           </label>
+          <div id="savedPlanTools" class="saved-plan-tools"></div>
           <div id="weeklyMeals" class="weekly-meals"></div>
+          <div id="shopping" class="shopping-heading">
+            <h3>Shop for this plan</h3>
+            <p class="inline-note">
+              The list subtracts your current pantry amounts. Check items as you
+              shop. Pantry amounts remain yours to update after cooking.
+            </p>
+            <p id="shoppingWarnings" role="status" class="warning-text"></p>
+          </div>
           <div class="shopping-grid">
             <div class="shopping-list">
               <div class="split-heading">
-                <h3>Manual shopping items</h3>
-                <span class="inline-note">Saved through the backend.</span>
+                <h3>Extra shopping items</h3>
+                <span class="inline-note">Always added to your list.</span>
               </div>
               <form id="manualShoppingForm" class="manual-item-form">
                 <label>
                   Item
-                  <input id="manualItemName" type="text" placeholder="Chicken breast" required />
+                  <input
+                    id="manualItemName"
+                    type="text"
+                    placeholder="Chicken breast"
+                    required
+                  />
                 </label>
                 <label>
                   Qty
-                  <input id="manualItemQuantity" type="number" min="0.25" step="0.25" value="1" required />
+                  <input
+                    id="manualItemQuantity"
+                    type="number"
+                    min="0.001"
+                    step="any"
+                    value="1"
+                    required
+                  />
                 </label>
                 <label>
                   Unit
-                  <input id="manualItemUnit" type="text" placeholder="lb, cup, oz" />
+                  <select id="manualItemUnit"></select>
                 </label>
                 <button type="submit">Add item</button>
               </form>
@@ -148,7 +279,7 @@
               <ul id="shoppingList"></ul>
             </div>
             <div class="shopping-list">
-              <h3>Already have</h3>
+              <h3>Covered by your pantry</h3>
               <ul id="alreadyHaveList"></ul>
             </div>
           </div>
@@ -165,13 +296,23 @@
                 <h3>Nearby grocery stores</h3>
               </div>
               <div class="shop-actions">
-                <button id="captureLocationButton" type="button" class="secondary-button">Use my location</button>
+                <button
+                  id="captureLocationButton"
+                  type="button"
+                  class="secondary-button"
+                >
+                  Use my location
+                </button>
                 <button id="shopNowButton" type="button">Shop now</button>
               </div>
             </div>
             <label class="stacked-field">
               Search location
-              <input id="locationQueryInput" type="text" placeholder="Hopkins Hall" />
+              <input
+                id="locationQueryInput"
+                type="text"
+                placeholder="Hopkins Hall"
+              />
             </label>
             <p id="locationStatus" class="panel-message"></p>
             <div id="storeResults" class="store-results"></div>
@@ -190,6 +331,8 @@
       </main>
     </div>
 
+    <datalist id="ingredientNames"></datalist>
+    <dialog id="cookingDialog" aria-labelledby="cookingTitle"></dialog>
     <script src="/app-config.js"></script>
     <script type="module" src="/app.js"></script>
   </body>

@@ -20,8 +20,16 @@ body {
   font-family: "Manrope", sans-serif;
   color: var(--ink);
   background:
-    radial-gradient(circle at top left, rgba(191, 90, 54, 0.18), transparent 28%),
-    radial-gradient(circle at top right, rgba(47, 107, 83, 0.14), transparent 24%),
+    radial-gradient(
+      circle at top left,
+      rgba(191, 90, 54, 0.18),
+      transparent 28%
+    ),
+    radial-gradient(
+      circle at top right,
+      rgba(47, 107, 83, 0.14),
+      transparent 24%
+    ),
     linear-gradient(180deg, #f8f1e7 0%, #f2eadf 100%);
   min-height: 100vh;
 }
@@ -691,5 +699,275 @@ button:disabled {
 
   .subsection-header .inline-note {
     max-width: none;
+  }
+}
+
+/* Dinner planning and guided cooking. */
+[hidden] {
+  display: none !important;
+}
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 24px;
+}
+.section-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 24px;
+}
+.section-nav a {
+  color: var(--accent-deep);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  padding: 12px 18px;
+  border-radius: 16px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.panel,
+.weekly-card,
+.shopping-list,
+.recipe-card,
+.detail-card {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.account-panel {
+  grid-column: span 4;
+}
+.preferences-panel {
+  grid-column: span 8;
+}
+.planner-panel {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+.recipes-panel {
+  grid-column: 1 / -1;
+}
+.pantry-form {
+  grid-template-columns: minmax(130px, 2fr) minmax(75px, 1fr) minmax(
+      90px,
+      1fr
+    ) auto;
+}
+.plan-settings {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.check-field {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  line-height: 1.5;
+}
+.check-field input {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  accent-color: var(--success);
+}
+.plan-settings .check-field {
+  grid-column: 1 / -1;
+}
+.saved-plan-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin: 20px 0;
+}
+.saved-plan-tools label {
+  max-width: 210px;
+}
+.weekly-meals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  align-items: start;
+}
+.weekly-card {
+  height: 100%;
+  align-content: start;
+}
+.weekly-card .swap-controls {
+  display: flex;
+  flex-wrap: wrap;
+}
+.weekly-card .swap-controls label {
+  width: 100%;
+}
+.leftover-card {
+  background: #edf2e8;
+}
+.shopping-heading {
+  margin: 32px 0 12px;
+}
+.shopping-check:has(input:checked) span {
+  text-decoration: line-through;
+  opacity: 0.65;
+}
+.warning-text,
+.cooking-error {
+  color: var(--danger);
+  line-height: 1.6;
+}
+.warning-text:empty,
+.cooking-error:empty {
+  display: none;
+}
+button,
+input,
+select {
+  min-height: 44px;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 3px solid var(--success);
+  outline-offset: 3px;
+}
+#cookingDialog {
+  width: min(760px, calc(100% - 32px));
+  max-height: 90dvh;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  color: var(--ink);
+  background: var(--surface-strong);
+}
+#cookingDialog::backdrop {
+  background: rgba(30, 24, 20, 0.65);
+}
+.cooking-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 20px;
+}
+.cooking-ingredients {
+  margin: 24px 0;
+  padding: 18px;
+  border-radius: 16px;
+  background: #edf2e8;
+}
+.cooking-ingredients ul {
+  columns: 2;
+  padding-left: 22px;
+  line-height: 1.8;
+}
+.cooking-instruction {
+  font-size: 1.45rem;
+  line-height: 1.6;
+}
+.cooking-navigation,
+.timer-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+  margin: 24px 0;
+}
+.cooking-navigation button {
+  flex: 1;
+}
+.timer-controls label {
+  max-width: 150px;
+}
+#timerOutput {
+  width: 100%;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--success);
+}
+@media (max-width: 800px) {
+  .account-panel,
+  .preferences-panel,
+  .planner-panel,
+  .recipes-panel,
+  .stores-panel,
+  .favorites-panel {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+  .planner-panel {
+    order: 3;
+  }
+  .account-panel {
+    order: 1;
+  }
+  .preferences-panel {
+    order: 2;
+  }
+  .recipes-panel {
+    order: 4;
+  }
+  .stores-panel {
+    order: 5;
+  }
+  .favorites-panel {
+    order: 6;
+  }
+  .plan-settings {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pantry-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pantry-form label:first-child {
+    grid-column: 1 / -1;
+  }
+  .hero {
+    grid-template-columns: 1fr;
+  }
+  .weekly-meals {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 520px) {
+  .page-shell {
+    padding: 16px 12px 32px;
+  }
+  .panel,
+  .hero-copy,
+  .hero-card {
+    padding: 20px 16px;
+    border-radius: 20px;
+  }
+  .weekly-meals,
+  .recipe-grid,
+  .favorites-list {
+    grid-template-columns: 1fr;
+  }
+  .manual-item-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .split-heading,
+  .shop-actions {
+    flex-wrap: wrap;
+  }
+  .plan-settings {
+    grid-template-columns: 1fr 1fr;
+  }
+  .plan-settings label:first-child {
+    grid-column: 1 / -1;
+  }
+  .saved-plan-tools > * {
+    flex: 1 1 130px;
+  }
+  #cookingDialog {
+    padding: 20px 16px;
+    width: calc(100% - 16px);
+    max-height: 94dvh;
+  }
+  .cooking-ingredients ul {
+    columns: 1;
+  }
+  .cooking-instruction {
+    font-size: 1.25rem;
   }
 }
