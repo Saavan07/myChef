@@ -235,7 +235,8 @@
             <h3>Shop for this plan</h3>
             <p class="inline-note">
               The list subtracts your current pantry amounts. Check items as you
-              shop. Pantry amounts remain yours to update after cooking.
+              shop. Review checked purchases to add them to your pantry.
+              Finishing a dinner updates the remaining list.
             </p>
             <p id="shoppingWarnings" role="status" class="warning-text"></p>
           </div>
@@ -277,6 +278,13 @@
             <div class="shopping-list">
               <h3>Shopping list</h3>
               <ul id="shoppingList"></ul>
+              <button
+                id="reviewPurchases"
+                type="button"
+                class="secondary-button"
+              >
+                Review checked purchases
+              </button>
             </div>
             <div class="shopping-list">
               <h3>Covered by your pantry</h3>
@@ -332,6 +340,7 @@
     </div>
 
     <datalist id="ingredientNames"></datalist>
+    <dialog id="purchaseDialog" aria-labelledby="purchaseTitle"></dialog>
     <dialog id="cookingDialog" aria-labelledby="cookingTitle"></dialog>
     <script src="/app-config.js"></script>
     <script type="module" src="/app.js"></script>

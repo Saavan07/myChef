@@ -355,6 +355,11 @@ function swapPlan(plan, payload, user, recipes, auto = false) {
     throw new InputError(
       "Swap the original cooking day to change its leftovers.",
     );
+  if (plan.completions?.[entry.id])
+    throw new InputError(
+      "This dinner is already finished. Undo it before changing the recipe.",
+      409,
+    );
   if (entry.locked)
     throw new InputError("Unlock this dinner before swapping it.", 409);
   const candidates = matchingRecipes(recipes, user, plan.max_minutes);
@@ -372,7 +377,9 @@ function swapPlan(plan, payload, user, recipes, auto = false) {
 }
 function shoppingList(plan, recipes, pantry, manual) {
   const totals = new Map();
-  for (const entry of plan.entries.filter((e) => e.kind === "cook")) {
+  for (const entry of plan.entries.filter(
+    (e) => e.kind === "cook" && !plan.completions?.[e.id],
+  )) {
     const recipe = recipes.find((r) => r.id === entry.recipe_id);
     if (!recipe?.base_servings)
       throw new InputError(

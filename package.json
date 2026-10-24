@@ -3,7 +3,7 @@
     "start": "node backend/server.js",
     "dev": "node --watch backend/server.js",
     "test": "node --test tests/*.test.js",
-    "test:integration": "node scripts/smoke-local.mjs",
+    "test:integration": "node scripts/smoke-local.mjs && node scripts/kitchen-cycle-local.mjs",
     "test:browser": "node scripts/browser-check.mjs"
   },
   "dependencies": {

@@ -44,6 +44,18 @@ Password storage uses Node's built-in scrypt with a unique salt and N=32768, r=8
 
 Recipe temperatures and reheating notes reference the [FoodSafety.gov minimum-temperature chart](https://www.foodsafety.gov/food-safety-charts/safe-minimum-internal-temperatures). Storage reminders reference [FoodSafety.gov's food-handling guidance](https://www.foodsafety.gov/keep-food-safe/4-steps-to-food-safety). These checks do not establish allergy safety, validate nutrition, or replace checking actual food temperatures and storage conditions.
 
+## Follow-up: shopping and cooking records
+
+The next increment closes the workflow after a shopping trip or a dinner. Checked purchases open a review of actual amounts bought; saving adds them to the pantry and removes purchased manual extras. A purchase ID makes retries safe, including concurrent duplicate requests.
+
+Finishing a dinner opens an ingredient-use review. Saving deducts only available tracked stock, records any untracked amount, preserves the original recipe and portions, and excludes that cooking day from future shopping totals. Serving its leftovers does not deduct raw ingredients again. Undo restores only the quantities actually deducted, and dependent leftovers must be undone before their source batch. Pantry edits set the amount remaining and reject stale reviews.
+
+Optional cooking observations record actual minutes, a portion-size judgment, and notes. Empty fields stay unknown. These observations are user-entered and do not automatically change recipe estimates. The automated tests use synthetic observations, not measurements from real cooking.
+
+Follow-up verification: 20 domain tests, the original 83 API checks plus 50 kitchen-cycle API checks, and desktop/390px browser workflows all passed locally. The new checks cover reviewed purchases, concurrent retries, partial inventory, measured use, observations after reload, completed-plan protections, served leftovers, ownership, stale inventory, and undo. Browser checks also verify that notes containing markup remain literal text and that a failed save retains the entered observations.
+
+No new database schema is required for this increment. Records are stored with each user's existing plans and written in the same transaction as pantry changes. Existing plans default to no purchase receipts or finished dinners.
+
 ## Next practical validation
 
 Cook several of the dinners, measure prep time and serving yield, and compare the shopping list with actual purchases. Those observations should guide catalog corrections and the next product changes.

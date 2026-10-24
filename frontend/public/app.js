@@ -1,5 +1,6 @@
 import { api } from "/api.js";
 import { openCooking, closeCooking } from "/cooking.js";
+import { openPurchases, closePurchases } from "/purchases.js";
 
 const storageKey = "mychef-session";
 const weekDays = [
@@ -36,6 +37,7 @@ const state = {
   preferences: [],
   restrictions: [],
   pantry: [],
+  pantryRevision: null,
   favorites: [],
   manualShoppingItems: [],
   mealPlans: [],
@@ -137,6 +139,8 @@ function formatIngredient(item, factor = 1) {
 }
 function clearSession() {
   closeCooking();
+  closePurchases();
+  state.pantryRevision = null;
   state.planCandidates = [];
   state.shoppingWarnings = [];
   state.userId = null;
@@ -472,6 +476,7 @@ async function loadUserData() {
     state.preferences = preferences.dietary_preferences || [];
     state.restrictions = preferences.dietary_restrictions || [];
     state.pantry = pantry.pantry || [];
+    state.pantryRevision = pantry.pantry_revision;
     state.favorites = favorites || [];
     state.manualShoppingItems = manualItems.items || [];
     state.mealPlans = mealPlans || [];
@@ -655,29 +660,50 @@ function renderPantry() {
     elements.pantryEmpty.hidden = true;
     state.pantry.forEach((item) => {
       const row = document.createElement("li");
-      row.innerHTML = `
-        <span>${escapeHtml(formatIngredient(item))}</span>
-        <button type="button" class="secondary-button">Remove</button>
-      `;
-      row.querySelector("button").disabled =
-        !state.userId || state.panelLoading.pantry;
-      row.querySelector("button").addEventListener("click", async () => {
-        clearBanners();
-        setPanelError("pantry", "");
-        setPanelLoading("pantry", true);
-        renderPreferences();
+      row.className = "pantry-row";
+      row.innerHTML = `<div class="pantry-item-heading"><span>${escapeHtml(formatIngredient(item))}</span><button type="button" class="secondary-button" data-remove>Remove</button></div>
+        <details><summary>Set amount remaining</summary><form class="pantry-edit"><label>Amount<input aria-label="Remaining amount of ${escapeHtml(item.name)}" type="number" min="0" max="100000" step="any" value="${item.quantity ?? ""}" required /></label>
+        ${item.quantity == null ? '<label>Unit<select><option value="count">items</option><option value="cup">cup</option><option value="tbsp">tbsp</option><option value="tsp">tsp</option><option value="g">g</option><option value="oz">oz</option><option value="lb">lb</option><option value="clove">clove</option></select></label>' : `<p>${escapeHtml(item.unit === "count" ? "items" : item.unit)} remaining. Set 0 to remove.</p>`}<button type="submit">Save amount</button></form></details>`;
+      row.querySelector("[data-remove]").disabled = state.panelLoading.pantry;
+      row.querySelector("[data-remove]").onclick = async () => {
         try {
-          await api.removePantryItem(state.userId, item.id);
-          state.pantry = state.pantry.filter((value) => value.id !== item.id);
+          const response = await api.removePantryItem(state.userId, item.id);
+          state.pantry = response.pantry;
+          state.pantryRevision = response.pantry_revision;
           await refreshShoppingList();
-          setStatus(`Removed ${item.name} from pantry.`);
+          renderPantry();
         } catch (error) {
-          setPanelError("pantry", error.message);
-        } finally {
-          setPanelLoading("pantry", false);
-          renderPreferences();
+          setError(error.message);
         }
-      });
+      };
+      const revision = state.pantryRevision;
+      row.querySelector("form").onsubmit = async (event) => {
+        event.preventDefault();
+        const button = row.querySelector('[type="submit"]');
+        button.disabled = true;
+        try {
+          const response = await api.setPantryAmount(state.userId, item.id, {
+            quantity: Number(row.querySelector("input").value),
+            unit: row.querySelector("select")?.value || item.unit,
+            pantry_revision: revision,
+          });
+          state.pantry = response.pantry;
+          state.pantryRevision = response.pantry_revision;
+          await refreshShoppingList();
+          renderPantry();
+          setStatus("Pantry amount updated.");
+        } catch (error) {
+          setError(error.message);
+          if (error.status === 409) {
+            const fresh = await api.getPantry(state.userId);
+            state.pantry = fresh.pantry;
+            state.pantryRevision = fresh.pantry_revision;
+            renderPantry();
+          }
+        } finally {
+          button.disabled = false;
+        }
+      };
       elements.pantryList.appendChild(row);
     });
   }
@@ -1257,7 +1283,17 @@ function renderManualShoppingItems() {
   });
 }
 
+function renderPurchaseButton() {
+  const button = document.querySelector("#reviewPurchases");
+  button.disabled =
+    !state.userId ||
+    !getActivePlan()?.entries ||
+    state.shoppingWarnings.length > 0 ||
+    state.panelLoading.shoppingList ||
+    !state.shoppingListItems.some((i) => i.checked);
+}
 function renderShoppingLists() {
+  renderPurchaseButton();
   document.querySelector("#shoppingWarnings").textContent =
     state.shoppingWarnings.join(" ");
   elements.shoppingList.innerHTML = "";
@@ -1312,6 +1348,7 @@ function renderShoppingLists() {
             checked: input.checked,
           });
           item.checked = input.checked;
+          renderPurchaseButton();
         } catch (error) {
           input.checked = item.checked;
           setError(error.message);
@@ -1400,6 +1437,16 @@ function renderPlanner() {
         createEmptyState(state.panelErrors.mealPlans),
       );
     tools.innerHTML = `<label>People for this saved plan<input id="savedServings" type="number" min="1" max="8" value="${activePlan.servings}" /></label><button id="saveServings" type="button" class="secondary-button">Update portions</button><button id="replanMeals" type="button" class="secondary-button">Replan unlocked dinners</button><button id="removePlan" type="button" class="secondary-button">Remove plan</button>`;
+    const started = Object.keys(activePlan.completions || {}).length > 0;
+    tools.querySelector("#savedServings").disabled = started;
+    tools.querySelector("#saveServings").disabled = started;
+    if (started) {
+      const note = document.createElement("p");
+      note.className = "inline-note";
+      note.textContent =
+        "Portions stay fixed once cooking starts. Unfinished dinners can still be replanned.";
+      tools.appendChild(note);
+    }
     tools.querySelector("#saveServings").onclick = () =>
       changePlan(activePlan, {
         action: "servings",
@@ -1420,6 +1467,7 @@ function renderPlanner() {
     };
     activePlan.entries.forEach((entry) => {
       const recipe = getRecipeById(entry.recipe_id);
+      const completion = activePlan.completions?.[entry.id];
       const card = document.createElement("article");
       card.className = `weekly-card ${entry.kind === "leftover" ? "leftover-card" : ""}`;
       const date = new Date(`${entry.date}T12:00:00`).toLocaleDateString(
@@ -1437,9 +1485,10 @@ function renderPlanner() {
       );
       card.innerHTML = `<span class="meal-day">${escapeHtml(date)}</span><h3>${escapeHtml(recipe?.name || "Recipe unavailable")}</h3>
         <p class="inline-note">${entry.kind === "leftover" ? `Reserved leftovers for ${entry.servings}` : `Cook ${entry.servings} portions | about ${recipe?.prep_time_minutes || "?"} min${entry.servings > activePlan.servings ? " | includes tomorrow" : ""}`}</p>
-        ${!matches ? '<p class="warning-text">Does not match your current settings. Change the cooking day before using this meal.</p>' : ""}
-        <button type="button" data-action="cook" ${!matches ? "disabled" : ""}>${entry.kind === "leftover" ? "Reheat leftovers" : "Start / resume cooking"}</button>
-        ${entry.kind === "cook" ? `<label class="check-field"><input type="checkbox" data-action="lock" ${entry.locked ? "checked" : ""} />Keep this dinner</label><div class="swap-controls"><label>Choose another dinner<select aria-label="Swap dinner for ${escapeHtml(date)}" ${entry.locked || !options ? "disabled" : ""}>${!matches ? '<option value="">Choose a matching dinner</option>' : ""}${options}</select></label><button type="button" data-action="swap" ${entry.locked || !options ? "disabled" : ""}>Swap dinner</button><button type="button" data-action="auto" class="secondary-button" ${entry.locked || state.planCandidates.length < 2 ? "disabled" : ""}>Suggest another</button></div>` : '<p class="inline-note">Changing the original dinner also updates this reserved portion.</p>'}`;
+        ${!matches && !completion ? '<p class="warning-text">This dinner no longer matches your settings.</p>' : ""}
+        ${completion ? `<p class="completion-badge">${entry.kind === "leftover" ? "Served" : "Cooked"}${completion.feedback.actual_minutes ? ` | ${completion.feedback.actual_minutes} actual min` : ""}</p>` : ""}
+        <button type="button" data-action="cook" ${!matches && !completion ? "disabled" : ""}>${completion ? "View cooking notes" : entry.kind === "leftover" ? "Reheat leftovers" : "Start / resume cooking"}</button>
+        ${entry.kind === "cook" && !completion ? `<label class="check-field"><input type="checkbox" data-action="lock" ${entry.locked ? "checked" : ""} />Keep this dinner</label><div class="swap-controls"><label>Choose another dinner<select aria-label="Swap dinner for ${escapeHtml(date)}" ${entry.locked || !options ? "disabled" : ""}>${!matches ? '<option value="">Choose a matching dinner</option>' : ""}${options}</select></label><button type="button" data-action="swap" ${entry.locked || !options ? "disabled" : ""}>Swap dinner</button><button type="button" data-action="auto" class="secondary-button" ${entry.locked || state.planCandidates.length < 2 ? "disabled" : ""}>Suggest another</button></div>` : '<p class="inline-note">Reserved portions come from the original cooking day.</p>'}`;
       card.querySelector('[data-action="cook"]').onclick = async () => {
         try {
           await openCooking(state.userId, activePlan.id, entry.id);
@@ -1447,7 +1496,7 @@ function renderPlanner() {
           setError(error.message);
         }
       };
-      if (entry.kind === "cook") {
+      if (entry.kind === "cook" && !completion) {
         card.querySelector('[data-action="lock"]').onchange = (event) =>
           changePlan(activePlan, {
             action: "lock",
@@ -1610,6 +1659,7 @@ elements.pantryForm.addEventListener("submit", async (event) => {
       unit: document.querySelector("#pantryUnit").value,
     });
     state.pantry = response.pantry;
+    state.pantryRevision = response.pantry_revision;
     elements.pantryInput.value = "";
     await refreshShoppingList();
     setStatus(`${item} added to pantry.`);
@@ -1806,6 +1856,34 @@ elements.manualShoppingForm.addEventListener("submit", async (event) => {
   }
 });
 
+document
+  .querySelector("#reviewPurchases")
+  .addEventListener("click", async () => {
+    try {
+      await openPurchases(state.userId, state.activePlanId);
+    } catch (error) {
+      setError(error.message);
+    }
+  });
+window.addEventListener("mychef:kitchen-changed", async () => {
+  if (!state.userId) return;
+  const userId = state.userId;
+  try {
+    const [pantry, manual] = await Promise.all([
+      api.getPantry(userId),
+      api.getManualShoppingItems(userId),
+    ]);
+    if (state.userId !== userId) return;
+    state.pantry = pantry.pantry;
+    state.pantryRevision = pantry.pantry_revision;
+    state.manualShoppingItems = manual.items;
+    await refreshMealPlans();
+    renderPreferences();
+    setStatus("Your kitchen and remaining dinners are up to date.");
+  } catch (error) {
+    setError(error.message);
+  }
+});
 const unitOptions = [
   "count",
   "cup",

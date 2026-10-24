@@ -92,6 +92,36 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
+  setPantryAmount(userId, itemId, payload) {
+    return request(`/users/${userId}/pantry/${itemId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+  recordPurchases(userId, planId, payload) {
+    return request(`/users/${userId}/meal-plans/${planId}/purchases`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  finishDinner(userId, planId, entryId, payload) {
+    return request(
+      `/users/${userId}/meal-plans/${planId}/cooking/${entryId}/finish`,
+      { method: "POST", body: JSON.stringify(payload) },
+    );
+  },
+  undoDinner(userId, planId, entryId, payload) {
+    return request(
+      `/users/${userId}/meal-plans/${planId}/cooking/${entryId}/finish`,
+      { method: "DELETE", body: JSON.stringify(payload) },
+    );
+  },
+  saveFeedback(userId, planId, entryId, payload) {
+    return request(
+      `/users/${userId}/meal-plans/${planId}/cooking/${entryId}/feedback`,
+      { method: "PATCH", body: JSON.stringify(payload) },
+    );
+  },
   register(payload) {
     return request("/register", {
       method: "POST",

@@ -2,6 +2,7 @@ const { randomUUID } = require("node:crypto");
 const { getPool } = require("./db");
 const auth = require("./auth");
 const d = require("./meal-domain");
+const k = require("./kitchen-domain");
 
 const fields = [
   "dietary_preferences",
@@ -177,7 +178,7 @@ function installUserRoutes(app) {
     );
   });
   app.get("/users/:userId/pantry", async (req, res) =>
-    res.json({ pantry: (await readUser(req.account.id)).pantry }),
+    res.json(k.pantryResult(await readUser(req.account.id))),
   );
   app.post("/users/:userId/pantry", async (req, res) => {
     const item = d.ingredient(req.body);
@@ -188,15 +189,22 @@ function installUserRoutes(app) {
             "Your pantry is full. Remove unused entries first.",
           );
         user.pantry = d.addPantry(user.pantry, item);
-        return { pantry: user.pantry };
+        return k.pantryResult(user);
       }),
     );
   });
+  app.patch("/users/:userId/pantry/:itemId", async (req, res) =>
+    res.json(
+      await mutate(req.account.id, ["pantry"], (user) =>
+        k.setPantryAmount(user, req.params.itemId, req.body || {}),
+      ),
+    ),
+  );
   app.delete("/users/:userId/pantry/:itemId", async (req, res) =>
     res.json(
       await mutate(req.account.id, ["pantry"], (user) => {
         user.pantry = user.pantry.filter((i) => i.id !== req.params.itemId);
-        return { pantry: user.pantry };
+        return k.pantryResult(user);
       }),
     ),
   );
@@ -304,9 +312,14 @@ function installUserRoutes(app) {
       await mutate(req.account.id, ["meal_plans"], async (user, db) => {
         const plan = d.planFrom(user, req.params.planId);
         d.checkVersion(plan, req.body?.version);
-        if (req.body.action === "servings")
+        if (req.body.action === "servings") {
+          if (k.hasCompletions(plan))
+            throw new d.InputError(
+              "Portions are fixed after cooking starts. Create a new plan for a different number of people.",
+              409,
+            );
           plan.servings = d.number(req.body.servings, "People", 1, 8, true);
-        else if (req.body.action === "lock") {
+        } else if (req.body.action === "lock") {
           const entry = plan.entries.find(
             (e) => e.id === req.body.entry_id && e.kind === "cook",
           );
@@ -325,10 +338,11 @@ function installUserRoutes(app) {
               422,
             );
           const used = plan.entries
-            .filter((e) => e.locked)
+            .filter((e) => e.locked || k.completeEntry(plan, e.id))
             .map((e) => e.recipe_id);
           for (const entry of plan.entries.filter(
-            (e) => e.kind === "cook" && !e.locked,
+            (e) =>
+              e.kind === "cook" && !e.locked && !k.completeEntry(plan, e.id),
           )) {
             entry.recipe_id = d.chooseRecipe(
               candidates,
@@ -356,7 +370,9 @@ function installUserRoutes(app) {
       const plan = d.planFrom(user, req.params.planId);
       const all = await recipes();
       d.preferences(user, all);
-      const warnings = plan.entries
+      const warnings = k
+        .remainingEntries(plan)
+        .filter((e) => e.kind === "cook")
         .filter(
           (e) =>
             !d.eligible(
@@ -374,6 +390,7 @@ function installUserRoutes(app) {
           ? { shopping_list_items: [], already_have_items: [] }
           : d.shoppingList(plan, all, user.pantry, user.shopping_list_items)),
         warnings,
+        pantry_revision: k.pantryRevision(user.pantry),
       });
     },
   );
@@ -383,6 +400,7 @@ function installUserRoutes(app) {
       res.json(
         await mutate(req.account.id, ["meal_plans"], async (user, db) => {
           const plan = d.planFrom(user, req.params.planId);
+          k.ensureRemainingMealsMatch(plan, await recipes(db), user);
           const list = d.shoppingList(
             plan,
             await recipes(db),
@@ -407,6 +425,72 @@ function installUserRoutes(app) {
         }),
       ),
   );
+  app.post("/users/:userId/meal-plans/:planId/purchases", async (req, res) =>
+    res.json(
+      await mutate(
+        req.account.id,
+        ["pantry", "shopping_list_items", "meal_plans"],
+        async (user, db) =>
+          k.recordPurchases(
+            user,
+            d.planFrom(user, req.params.planId),
+            req.body || {},
+            await recipes(db),
+          ),
+      ),
+    ),
+  );
+  app.post(
+    "/users/:userId/meal-plans/:planId/cooking/:entryId/finish",
+    async (req, res) =>
+      res.json(
+        await mutate(
+          req.account.id,
+          ["pantry", "meal_plans"],
+          async (user, db) =>
+            k.finishDinner(
+              user,
+              d.planFrom(user, req.params.planId),
+              req.params.entryId,
+              req.body || {},
+              await recipes(db),
+            ),
+        ),
+      ),
+  );
+  app.delete(
+    "/users/:userId/meal-plans/:planId/cooking/:entryId/finish",
+    async (req, res) =>
+      res.json(
+        await mutate(req.account.id, ["pantry", "meal_plans"], (user) =>
+          k.undoDinner(
+            user,
+            d.planFrom(user, req.params.planId),
+            req.params.entryId,
+            req.body || {},
+          ),
+        ),
+      ),
+  );
+  app.patch(
+    "/users/:userId/meal-plans/:planId/cooking/:entryId/feedback",
+    async (req, res) =>
+      res.json(
+        await mutate(req.account.id, ["meal_plans"], (user) => {
+          const plan = d.planFrom(user, req.params.planId);
+          d.checkVersion(plan, req.body?.version);
+          const completion = k.completeEntry(plan, req.params.entryId);
+          if (!completion)
+            throw new d.InputError(
+              "Finish this dinner before saving observations.",
+              409,
+            );
+          completion.feedback = k.feedback(req.body.feedback);
+          plan.version++;
+          return { completion, version: plan.version };
+        }),
+      ),
+  );
   app.get(
     "/users/:userId/meal-plans/:planId/cooking/:entryId",
     async (req, res) => {
@@ -428,6 +512,11 @@ function installUserRoutes(app) {
             await recipes(db),
             user,
           );
+          if (result.completion)
+            throw new d.InputError(
+              "This dinner is already finished. Undo it before restarting.",
+              409,
+            );
           const progress = result.progress;
           progress.step = d.number(
             req.body.step,
@@ -461,8 +550,9 @@ function cooking(plan, entryId, all, user) {
   const recipe = all.find((r) => r.id === entry.recipe_id);
   if (!recipe?.base_servings)
     throw new d.InputError("Recipe not available for guided cooking.", 409);
-  d.preferences(user, all);
-  if (!d.eligible(recipe, user, plan.max_minutes))
+  const completion = k.completeEntry(plan, entry.id);
+  if (!completion) d.preferences(user, all);
+  if (!completion && !d.eligible(recipe, user, plan.max_minutes))
     throw new d.InputError(
       "This dinner no longer matches your dietary settings. Swap it before cooking.",
       422,
@@ -493,6 +583,17 @@ function cooking(plan, entryId, all, user) {
           ],
         }
       : recipe;
-  return { entry, recipe: displayRecipe, progress, version: plan.version };
+  return {
+    entry,
+    recipe: displayRecipe,
+    progress,
+    version: plan.version,
+    completion,
+    usage: k.cookingUsage(entry, recipe, user.pantry),
+    pantry_revision: k.pantryRevision(user.pantry),
+    source_finished:
+      entry.kind !== "leftover" ||
+      Boolean(k.completeEntry(plan, entry.source_entry_id)),
+  };
 }
 module.exports = { installUserRoutes, readUser, recipes, mutate };

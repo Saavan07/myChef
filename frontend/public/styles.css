@@ -747,10 +747,9 @@ html {
   grid-column: 1 / -1;
 }
 .pantry-form {
-  grid-template-columns: minmax(130px, 2fr) minmax(75px, 1fr) minmax(
-      90px,
-      1fr
-    ) auto;
+  grid-template-columns:
+    minmax(130px, 2fr) minmax(75px, 1fr) minmax(90px, 1fr)
+    auto;
 }
 .plan-settings {
   display: grid;
@@ -969,5 +968,83 @@ select:focus-visible {
   }
   .cooking-instruction {
     font-size: 1.25rem;
+  }
+}
+
+/* Review the real kitchen changes before recording them. */
+#purchaseDialog {
+  width: min(720px, calc(100% - 32px));
+  max-height: 90dvh;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  color: var(--ink);
+  background: var(--surface-strong);
+}
+#purchaseDialog::backdrop {
+  background: rgba(30, 24, 20, 0.65);
+}
+.purchase-items,
+.usage-list,
+.observation-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 24px 0;
+}
+.wide-field {
+  grid-column: 1 / -1;
+}
+.usage-list label {
+  padding: 12px;
+  background: #edf2e8;
+  border-radius: 12px;
+}
+.finish-confirm {
+  margin: 24px 0;
+}
+.pantry-row {
+  display: block !important;
+}
+.pantry-item-heading,
+.pantry-edit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.pantry-row details {
+  margin-top: 12px;
+}
+.pantry-edit {
+  margin-top: 12px;
+  align-items: end;
+}
+.pantry-edit label {
+  flex: 1;
+  min-width: 100px;
+}
+.completion-badge {
+  color: var(--success);
+  font-weight: 700;
+}
+#reviewPurchases {
+  width: 100%;
+  margin-top: 18px;
+}
+#observationsForm {
+  margin: 28px 0;
+}
+@media (max-width: 520px) {
+  .purchase-items,
+  .usage-list,
+  .observation-fields {
+    grid-template-columns: 1fr;
+  }
+  #purchaseDialog {
+    width: calc(100% - 16px);
+    padding: 20px 16px;
+    max-height: 94dvh;
   }
 }

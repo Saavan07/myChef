@@ -10,7 +10,10 @@ The foundation is the Spring 2026 CS 222 team project by Saavan Kiran, Ayush Cha
 - Cook extra for the following night. Leftover portions are included in the original batch and counted once in the shopping list.
 - Keep selected dinners, replan the others, swap a meal, or change portions. Conflicting edits from another tab require a reload.
 - Save measured pantry amounts. Shopping subtracts available quantities across the entire selected plan, converts compatible units, and retains intentional extra purchases.
-- Check off purchases, then open a phone-friendly cooking view with scaled ingredients, saved steps, and a timer that resumes after reload.
+- Check off purchases and review the actual amounts bought before adding them to the pantry. Correct remaining stock directly when needed.
+- Follow a phone-friendly cooking view with scaled ingredients, saved steps, and a timer that resumes after reload.
+- Review actual ingredient use when finishing a dinner. Tracked stock is deducted once, leftovers do not consume raw ingredients twice, and the shopping list covers remaining cooking days.
+- Save optional observations about actual time, portion size, and what to change next time. Undo a finished dinner to restore only the stock that was deducted.
 - Choose from 17 recipes, including 12 dinners. Dietary settings apply to generation and swaps. Conflicting older plans require changes before shopping or cooking.
 - Sign in with a server-verified session. Passwords are salted and hashed, session cookies are HttpOnly, and private routes check account ownership.
 
@@ -58,7 +61,9 @@ The GitHub workflow runs the same checks with MySQL and Chromium.
 ## Boundaries of this version
 
 - Dietary filtering uses a reviewed catalog and recognized ingredient exclusions. Package ingredients, brand substitutions, and cross-contact must still be checked by the person cooking.
-- Pantry counts are a planning snapshot. Cooking and checking off purchases do not automatically consume or replenish stock. Update quantities before planning another week.
+- Checkmarks and cooking-step navigation do not change pantry stock. The explicit purchase and finish reviews apply the changes. Ingredients missing from the pantry are recorded as untracked, never negative stock.
+- Finished dinners keep their original recipe and portions. Undo them before changing them; undo served leftovers before undoing their source batch. A new plan is needed for a different number of people once cooking has started.
+- Cooking observations are private, user-entered notes. Leaving a field blank means it is unknown; recipe estimates are never copied into actual results.
 - Volume conversions use US cooking measures. Mass and volume stay separate; cans, slices, and individual items do not convert to weight. Rice, pasta, oats, and lentils are measured dry. Bean weights are canned package net weights before draining.
 - Cooking times are estimates. Recipes have not yet been kitchen-tested across serving sizes. Timers show status when the app is open and resume after reload; they do not send background alarms.
 - Google Places is an optional nearby-store lookup. It does not provide inventory, prices, or nutrition data. AI assistance, voice, friends, and native apps remain future work.
@@ -66,7 +71,7 @@ The GitHub workflow runs the same checks with MySQL and Chromium.
 
 ## Architecture
 
-The browser uses HTML, CSS, and JavaScript. Express serves the interface and API, with MySQL persistence. `backend/auth.js` handles sessions and password hashing; `backend/meal-domain.js` contains planning and quantity rules; `backend/user-routes.js` handles account-owned data with transactions; `backend/migrate.js` manages startup upgrades. The existing grocery integration remains in `backend/server.js`.
+The browser uses HTML, CSS, and JavaScript. Express serves the interface and API, with MySQL persistence. `backend/auth.js` handles sessions and password hashing; `backend/meal-domain.js` contains planning and quantity rules; `backend/kitchen-domain.js` handles reviewed purchases, inventory changes, and cooking records; `backend/user-routes.js` handles account-owned data with transactions; `backend/migrate.js` manages startup upgrades. The existing grocery integration remains in `backend/server.js`.
 
 `main.py` is an earlier team backend retained for history and is not part of the active application.
 

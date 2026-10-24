@@ -200,6 +200,169 @@ try {
         .getByRole("button", { name: "Swap dinner", exact: true })
         .isDisabled(),
     );
+    // Review a purchase using the quantity actually bought, then finish and undo a dinner.
+    await page
+      .getByRole("button", { name: "Review checked purchases", exact: true })
+      .click();
+    await page.locator("#purchaseDialog").waitFor({ state: "visible" });
+    await page.locator('#purchaseDialog input[data-index="0"]').fill("5");
+    await page
+      .getByRole("button", { name: "Add purchases to pantry", exact: true })
+      .click();
+    await page.locator("#purchaseDialog").waitFor({ state: "hidden" });
+    await page.waitForFunction(() =>
+      document.querySelector("#pantryList").textContent.includes("6 cup rice"),
+    );
+    await page
+      .locator(".weekly-card")
+      .first()
+      .getByRole("button", { name: "Start / resume cooking" })
+      .click();
+    await page.locator("#cookingDialog").waitFor({ state: "visible" });
+    while (
+      await page.getByRole("button", { name: "Next step", exact: true }).count()
+    ) {
+      const before = await page
+        .locator("#cookingDialog .eyebrow")
+        .last()
+        .textContent();
+      await page
+        .getByRole("button", { name: "Next step", exact: true })
+        .click();
+      await page.waitForFunction(
+        (before) =>
+          document
+            .querySelector("#cookingDialog")
+            .textContent.includes("Step") &&
+          [...document.querySelectorAll("#cookingDialog .eyebrow")].at(-1)
+            .textContent !== before,
+        before,
+      );
+    }
+    await page
+      .getByRole("button", { name: "Review and finish", exact: true })
+      .click();
+    await page.locator("#finishDinnerForm").waitFor();
+    await page.locator("#actualMinutes").fill("37");
+    await page.locator("#portionFeedback").selectOption("about_right");
+    await page
+      .locator("#cookingNotes")
+      .fill("Trial note: use a bigger pan. <b>Literal text</b>");
+    await page.locator("#finishConfirmed").check();
+    await page.screenshot({
+      path: `test-results/finish-review-${viewport.width}.png`,
+    });
+    await page
+      .getByRole("button", { name: "Save finished dinner", exact: true })
+      .click();
+    await page.locator("#observationsForm").waitFor();
+    assert.equal(await page.locator("#actualMinutes").inputValue(), "37");
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+    await page.reload();
+    await page
+      .locator(".weekly-card")
+      .first()
+      .getByRole("button", { name: "View cooking notes" })
+      .waitFor();
+    assert(
+      (await page.locator("#pantryList").textContent()).includes("5 cup rice"),
+    );
+    assert(
+      (await page.locator(".weekly-card").first().textContent()).includes(
+        "37 actual min",
+      ),
+    );
+    await page
+      .locator(".weekly-card")
+      .first()
+      .getByRole("button", { name: "View cooking notes" })
+      .click();
+    await page.locator("#observationsForm").waitFor();
+    assert(
+      (await page.locator("#cookingNotes").inputValue()).includes(
+        "<b>Literal text</b>",
+      ),
+    );
+    assert.equal(await page.locator("#cookingDialog b").count(), 0);
+    await page.locator("#actualMinutes").fill("36");
+    await page.route("**/cooking/*/feedback", (route) => route.abort(), {
+      times: 1,
+    });
+    await page
+      .getByRole("button", { name: "Save cooking notes", exact: true })
+      .click();
+    await page.waitForFunction(
+      () =>
+        document.querySelector("#cookingDialog .cooking-error").textContent
+          .length > 0,
+    );
+    assert.equal(
+      await page.locator("#actualMinutes").inputValue(),
+      "36",
+      "A failed save must preserve the entered observations",
+    );
+    assert(
+      (await page.locator("#cookingNotes").inputValue()).includes("Larger") ||
+        (await page.locator("#cookingNotes").inputValue()).includes(
+          "bigger pan",
+        ),
+    );
+    const feedbackSaved = page.waitForResponse(
+      (r) =>
+        r.url().endsWith("/feedback") &&
+        r.request().method() === "PATCH" &&
+        r.ok(),
+    );
+    await page
+      .getByRole("button", { name: "Save cooking notes", exact: true })
+      .click();
+    await feedbackSaved;
+    await page.waitForFunction(
+      () =>
+        document.querySelector("#observationsForm button") &&
+        !document.querySelector("#observationsForm button").disabled,
+    );
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+    const ricePantry = page
+      .locator("#pantryList li")
+      .filter({ hasText: "rice" });
+    await ricePantry.locator("summary").click();
+    await ricePantry.getByRole("spinbutton").fill("0.5");
+    await ricePantry
+      .getByRole("button", { name: "Save amount", exact: true })
+      .click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector("#pantryList")
+        .textContent.includes("0.5 cup rice"),
+    );
+    await page.waitForFunction(() =>
+      document
+        .querySelector("#shoppingList")
+        .textContent.includes("1.5 cup rice"),
+    );
+    await page
+      .locator(".weekly-card")
+      .first()
+      .getByRole("button", { name: "View cooking notes" })
+      .click();
+    await page.locator("#observationsForm").waitFor();
+    page.once("dialog", (dialog) => dialog.accept());
+    await page
+      .getByRole("button", { name: "Undo finished dinner", exact: true })
+      .click();
+    await page.locator("#cookingDialog").waitFor({ state: "hidden" });
+    await page.waitForFunction(() =>
+      document
+        .querySelector("#pantryList")
+        .textContent.includes("1.5 cup rice"),
+    );
+    assert.equal(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth > innerWidth + 1,
+      ),
+      false,
+    );
     await page.getByRole("button", { name: "Log out", exact: true }).click();
     await page
       .getByRole("button", { name: "Login", exact: true })
@@ -210,7 +373,7 @@ try {
     assert.equal(await page.locator(".weekly-card").count(), 0);
     assert.deepEqual(errors, []);
     console.log(
-      `PASS: ${viewport.width}px browser workflow, cookie/session persistence, quantity shopping, manual items, saved checkboxes, cooking steps/timer, locked dinners, logout, and no horizontal overflow.`,
+      `PASS: ${viewport.width}px browser workflow, cookie/session persistence, quantity shopping, manual items, saved checkboxes, cooking steps/timer, locked dinners, reviewed purchases, recorded cooking/notes, pantry edits, undo, logout, and no horizontal overflow.`,
     );
     await context.close();
   }
