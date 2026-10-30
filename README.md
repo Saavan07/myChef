@@ -92,6 +92,6 @@ I worked on the frontend prototype and improved shopping-list ingredient matchin
 
 The commit history records many of our changes, alongside the design, debugging, and pair work we did together.
 
-See `docs/project-baseline.md` for the boundary between the team application and later development. No new blanket license is assigned by this documentation update; preserve existing contributor and third-party notices.
+See [project baseline](docs/project-baseline.md) for the original team application and its development history.
 
 See [publication history and original commit mapping](docs/publication-history.md) for the cleaned-copy provenance.
