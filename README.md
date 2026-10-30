@@ -2,7 +2,7 @@
 
 A meal-planning app for students cooking for themselves. Choose dinners for the week, use what is already in your pantry, shop for the missing amounts, and follow the recipes on your phone.
 
-The foundation is the Spring 2026 CS 222 team project by Saavan Kiran, Ayush Chandra, Sam Tewari, and Tanish Mittal at the University of Illinois Urbana-Champaign. The October 2026 work extends that baseline in this personal repository. Original team history and source attribution remain preserved.
+I worked on myChef with Ayush Chandra, Sam Tewari, and Tanish Mittal for CS 222 at the University of Illinois Urbana-Champaign in Spring 2026. I'm now extending that project with a fuller planning, shopping, and cooking workflow. Our original team history and source attribution are preserved here.
 
 ## The first cooking week
 
@@ -88,9 +88,9 @@ The browser uses HTML, CSS, and JavaScript. Express serves the interface and API
 
 ## Contributions and provenance
 
-This was collaborative work across the team. Saavan's recorded changes include frontend prototype work and commit `1cf2c63`, which repaired shopping-list ingredient matching, quantities, manual items, and their presentation across the frontend and earlier Python backend. The final Node.js/MySQL integration incorporates work from the other team members.
+I worked on the frontend prototype and improved shopping-list ingredient matching, quantities, manual items, and how those appeared in the app. Commit `1cf2c63` includes that work across the frontend and earlier Python backend. My teammates contributed to the Node.js/MySQL integration, and we helped each other across the project.
 
-Git commits are evidence of recorded changes, not a complete measure of design, debugging, or pair work. Individual and shared responsibilities will be refined with the contributors instead of assigning exclusive ownership from commit counts.
+The commit history records many of our changes, alongside the design, debugging, and pair work we did together.
 
 See `docs/project-baseline.md` for the boundary between the team application and later development. No new blanket license is assigned by this documentation update; preserve existing contributor and third-party notices.
 
