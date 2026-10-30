@@ -1,0 +1,54 @@
+name: Cooking week checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: mychef_local
+          MYSQL_USER: mychef_local
+          MYSQL_PASSWORD: local-development-only
+          MYSQL_ROOT_PASSWORD: local-root-development-only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+    env:
+      DB_HOST: 127.0.0.1
+      DB_USER: mychef_local
+      DB_PASSWORD: local-development-only
+      DB_NAME: mychef_local
+      DB_PORT: 3306
+      API_PORT: 4000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm --prefix frontend ci
+      - run: npm test
+      - run: node scripts/migration-check.cjs
+      - name: Start local application
+        run: |
+          npm start > /tmp/mychef-api.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:4000/health; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/mychef-api.log
+          exit 1
+      - run: npm run test:integration
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cooking-week-browser-checks
+          path: test-results/

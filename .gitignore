@@ -45,3 +45,7 @@ logs/
 # Node
 node_modules/
 frontend/node_modules/
+
+# Local test output
+test-results/
+playwright-report/
